@@ -80,6 +80,23 @@ class Settings(BaseSettings):
         description="Se True (1/true/yes), ignora last_run e faz varredura completa. Use na 1ª execução ou para reparo.",
     )
 
+    @field_validator("PIPELINE_FULL_SCAN", mode="before")
+    @classmethod
+    def parse_pipeline_full_scan(cls, v: object) -> bool:
+        """Quando a variável não está definida na pipeline, Azure DevOps envia literal '$(PIPELINE_FULL_SCAN)'."""
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if not s or s.startswith("$("):
+                return False
+            if s in ("1", "true", "yes"):
+                return True
+            return False
+        return False
+
     # Opcional: pasta OneDrive para arquivos de fechamento
     CLOSED_FEATURES_ONEDRIVE_PATH: str = Field(
         default="",
