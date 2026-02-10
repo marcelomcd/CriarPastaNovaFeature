@@ -1,10 +1,15 @@
 """Cliente Azure DevOps REST API: Features, anexos, atualização de campos."""
 import base64
 import logging
+import re
+import tempfile
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, unquote
 
 import requests
+
+from app.utils.name_utils import sanitize_attachment_filename
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -60,19 +65,30 @@ class AzureDevOpsClient:
         r.raise_for_status()
         return r
 
-    def list_features(self, include_closed: bool = True) -> list[WorkItemResponse]:
+    def list_features(
+        self,
+        include_closed: bool = True,
+        updated_since: datetime | None = None,
+    ) -> list[WorkItemResponse]:
         """
         Lista Features do projeto (Area Path sob Quali IT ! Gestao de Projetos).
         include_closed: se True, inclui Features encerradas (para varredura).
+        updated_since: se informado, retorna apenas Features criadas ou alteradas após essa data (UTC).
+                       Útil para varredura incremental após a primeira execução.
         """
         area = "Quali IT - Inovação e Tecnologia\\Quali IT ! Gestao de Projetos"
         state_filter = "" if include_closed else " AND [System.State] <> 'Encerrado'"
+        date_filter = ""
+        if updated_since is not None:
+            # WIQL aceita data em formato ISO; System.ChangedDate é atualizado em criação e em edições (ex.: novo anexo)
+            dt = updated_since.strftime("%Y-%m-%dT%H:%M:%SZ")
+            date_filter = f" AND [System.ChangedDate] >= '{dt}'"
         wiql = {
             "query": (
                 "SELECT [System.Id], [System.Title], [System.AreaPath], [System.CreatedDate], [System.State], "
                 "[Custom.NumeroProposta], [Custom.LinkPastaDocumentacao] FROM WorkItems "
                 f"WHERE [System.WorkItemType] = 'Feature' AND [System.AreaPath] UNDER '{area}'"
-                f"{state_filter} ORDER BY [System.Id] DESC"
+                f"{state_filter}{date_filter} ORDER BY [System.Id] DESC"
             )
         }
         r = self._make_request("POST", "wit/wiql", json=wiql)
@@ -147,7 +163,7 @@ class AzureDevOpsClient:
     def list_attachment_relations(self, work_item: WorkItemResponse) -> list[tuple[str, str]]:
         """
         Extrai (attachment_id, name) dos relations do work item.
-        rel == 'AttachedFile'; url termina com /attachments/{id}; attributes.name pode ter o nome do arquivo.
+        rel == 'AttachedFile'; url termina com /attachments/{id}; attributes.name tem o nome do arquivo.
         """
         result = []
         for rel in work_item.relations or []:
@@ -157,9 +173,26 @@ class AzureDevOpsClient:
             if "/attachments/" not in url:
                 continue
             att_id = url.split("/attachments/")[-1].split("?")[0].strip()
-            name = (rel.get("attributes") or {}).get("name") or f"attachment_{att_id}"
-            result.append((att_id, name))
+            name = (rel.get("attributes") or {}).get("name") or ""
+            if not name or name.strip() == "" or name.startswith("attachment_"):
+                name = f"attachment_{att_id}"
+            result.append((att_id, name.strip()))
         return result
+
+    @staticmethod
+    def _filename_from_content_disposition(content_disposition: str | None) -> str | None:
+        """Extrai filename do header Content-Disposition (filename=\"...\" ou filename*=UTF-8''...)."""
+        if not content_disposition:
+            return None
+        # filename*=UTF-8''nome%20arquivo.docx
+        m = re.search(r"filename\*=UTF-8''([^;\s]+)", content_disposition, re.I)
+        if m:
+            return unquote(m.group(1).strip())
+        # filename="nome.docx"
+        m = re.search(r'filename["\']?\s*=\s*["\']?([^"\';\s\n\r]+)', content_disposition, re.I)
+        if m:
+            return m.group(1).strip()
+        return None
 
     def download_attachment(
         self,
@@ -167,19 +200,35 @@ class AzureDevOpsClient:
         file_name: str | None = None,
         destination: Path | None = None,
     ) -> Path:
-        """Baixa um anexo por ID e retorna o Path do arquivo salvo."""
+        """
+        Baixa um anexo por ID e retorna o Path do arquivo salvo com o nome original (sanitizado).
+        O arquivo é salvo com o mesmo nome/extensão para subir ao SharePoint com nome correto.
+        """
         proj = unquote(self.project) if "%" in self.project else self.project
         proj_enc = quote(proj, safe="", encoding="utf-8")
         url = f"{self.base_url}/{proj_enc}/_apis/wit/attachments/{attachment_id}?api-version={self.api_version}"
         r = self.session.get(url, timeout=60)
         r.raise_for_status()
         content = r.content
+        # Nome: preferir file_name; senão Content-Disposition; senão attachment_id
+        name = (file_name or "").strip()
+        if not name or name.startswith("attachment_"):
+            name = self._filename_from_content_disposition(r.headers.get("Content-Disposition")) or f"attachment_{attachment_id}"
+        safe_name = sanitize_attachment_filename(name)
+        if not Path(safe_name).suffix and "." in name:
+            ext = Path(name).suffix
+            if ext:
+                safe_name = safe_name.rstrip(".") + ext
         if destination is None:
-            import tempfile
-            suffix = Path(file_name or "attachment").suffix or ".bin"
-            f = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
-            destination = Path(f.name)
-            f.close()
+            temp_dir = Path(tempfile.mkdtemp())
+            destination = temp_dir / safe_name
+            # Evitar sobrescrever se houver dois anexos com mesmo nome
+            base = destination.stem
+            suffix = destination.suffix
+            n = 1
+            while destination.exists():
+                destination = temp_dir / f"{base}_{n}{suffix}"
+                n += 1
         destination = Path(destination)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(content)

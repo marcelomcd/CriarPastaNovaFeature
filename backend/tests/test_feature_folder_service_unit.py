@@ -65,3 +65,22 @@ def test_feature_info_to_folder_path():
     assert "Camil" in path.client_name
     assert "100" in path.folder_name
     assert path.relative_path().startswith("2025/")
+    assert path.closed is False
+    assert "Closed" not in path.relative_path()
+
+
+def test_feature_info_to_folder_path_closed():
+    from app.models.feature_folder import FeatureInfo
+    info = FeatureInfo(
+        id=100,
+        title="Titulo",
+        area_path="A\\B\\Cliente",
+        created_date=datetime(2025, 1, 1),
+        state="Encerrado",
+        numero_proposta=None,
+        link_pasta_documentacao=None,
+    )
+    path = feature_info_to_folder_path(info)
+    assert path.closed is True
+    assert path.relative_path() == path.relative_path_active().replace("/", "/Closed/", 1)
+    assert "Closed" in path.relative_path()

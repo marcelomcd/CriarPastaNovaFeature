@@ -1,17 +1,12 @@
 # Pipeline de varredura: pastas SharePoint por Feature (FluxoNovasFeatures)
-# Executa periodicamente; para tempo real use a API FastAPI com Service Hooks.
-# Variáveis: AZURE_DEVOPS_PAT, SHAREPOINT_*, AZURE_DEVOPS_ORG, AZURE_DEVOPS_PROJECT (ver docs/PIPELINE_VARIABLES_AZURE_DEVOPS.md)
+# Gatilhos: SOMENTE execução manual na 1ª vez; depois configure Service Hooks para
+#   "Work item created" e "Work item updated" apontando para a API (webhook) para
+#   novas Features e anexos adicionados/atualizados.
+# Variáveis: AZURE_DEVOPS_PAT, SHAREPOINT_*, AZURE_DEVOPS_ORG, AZURE_DEVOPS_PROJECT (ver docs)
 
 trigger: none
-
-schedules:
-  - cron: "0 10 * * *"   # 10:00 UTC (ex.: 7:00 BRT) todo dia
-    displayName: Varredura diária - pastas Feature
-    branches:
-      include:
-        - main
-        - master
-    always: true
+# Sem schedules: após a primeira execução manual, use Service Hooks (Project Settings)
+# para disparar a API nos eventos "Work item created" e "Work item updated".
 
 pool:
   vmImage: "ubuntu-latest"
@@ -54,6 +49,12 @@ steps:
       SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
       SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
 
+  - task: Cache@2
+    displayName: "Restaurar cache da última execução (last_run)"
+    inputs:
+      key: "pipeline-lastrun-$(Build.SourceBranch)"
+      path: backend/logs
+
   - script: |
       cd backend
       python pipeline_feature_folders.py
@@ -68,6 +69,7 @@ steps:
       SHAREPOINT_SITE_URL: $(SHAREPOINT_SITE_URL)
       SHAREPOINT_FOLDER_PATH_BASE: $(SHAREPOINT_FOLDER_PATH_BASE)
       LOG_LEVEL: $(LOG_LEVEL)
+      PIPELINE_FULL_SCAN: $(PIPELINE_FULL_SCAN)
     continueOnError: false
 
   - task: PublishBuildArtifacts@1

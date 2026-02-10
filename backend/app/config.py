@@ -74,6 +74,12 @@ class Settings(BaseSettings):
         description="Nível de log (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
     )
 
+    # Pipeline: varredura incremental (após primeira execução, só processa Features novas/alteradas)
+    PIPELINE_FULL_SCAN: bool = Field(
+        default=False,
+        description="Se True (1/true/yes), ignora last_run e faz varredura completa. Use na 1ª execução ou para reparo.",
+    )
+
     # Opcional: pasta OneDrive para arquivos de fechamento
     CLOSED_FEATURES_ONEDRIVE_PATH: str = Field(
         default="",

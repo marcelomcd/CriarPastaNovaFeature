@@ -104,6 +104,72 @@ class SharePointFileService:
             return None
         return None
 
+    def get_folder_id_by_relative_path(self, drive_id: str, relative_path: str) -> str | None:
+        """Obtém o ID da pasta pelo caminho relativo à base. Retorna None se não existir."""
+        full = f"{self.folder_path_base}/{relative_path}".strip("/").replace("//", "/")
+        return self._get_folder_id(drive_id, full)
+
+    def list_folder_children(self, drive_id: str, folder_id: str) -> list[dict]:
+        """Lista itens (arquivos e subpastas) diretos da pasta. Cada item tem id, name, file ou folder."""
+        token = self.auth_service.get_access_token()
+        url = f"{self.graph_base_url}/drives/{drive_id}/items/{folder_id}/children"
+        r = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json().get("value", [])
+
+    def download_item_content(self, drive_id: str, item_id: str) -> bytes:
+        """Baixa o conteúdo de um item (arquivo)."""
+        token = self.auth_service.get_access_token()
+        url = f"{self.graph_base_url}/drives/{drive_id}/items/{item_id}/content"
+        r = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=60,
+        )
+        r.raise_for_status()
+        return r.content
+
+    def delete_item(self, drive_id: str, item_id: str) -> None:
+        """Remove um item (arquivo ou pasta e conteúdo)."""
+        token = self.auth_service.get_access_token()
+        url = f"{self.graph_base_url}/drives/{drive_id}/items/{item_id}"
+        r = requests.delete(url, headers={"Authorization": f"Bearer {token}"}, timeout=30)
+        r.raise_for_status()
+
+    def copy_folder_contents_to(
+        self,
+        drive_id: str,
+        source_folder_id: str,
+        target_folder_id: str,
+    ) -> None:
+        """
+        Copia todos os arquivos (apenas um nível) da pasta source para a pasta target.
+        Usado para mover Feature encerrada de Ano/Cliente/Feature para Ano/Closed/Cliente/Feature.
+        """
+        children = self.list_folder_children(drive_id, source_folder_id)
+        for item in children:
+            if item.get("file") is not None:
+                name = item.get("name") or ""
+                item_id = item.get("id")
+                if not name or not item_id:
+                    continue
+                content = self.download_item_content(drive_id, item_id)
+                tmp = Path(Path(name).name)
+                try:
+                    tmp.write_bytes(content)
+                    self.upload_file(tmp, target_folder_id, drive_id=drive_id, overwrite=True, upload_name=name)
+                finally:
+                    try:
+                        tmp.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+            # Subpastas não copiadas (estrutura é plana: Feature só tem arquivos)
+        self.delete_item(drive_id, source_folder_id)
+
     def _create_folder(self, drive_id: str, parent_id: str, name: str) -> str:
         """Cria uma pasta dentro de parent_id e retorna o item id."""
         token = self.auth_service.get_access_token()
@@ -203,8 +269,9 @@ class SharePointFileService:
         folder_id: str,
         drive_id: str | None = None,
         overwrite: bool = True,
+        upload_name: str | None = None,
     ) -> dict:
-        """Faz upload de um arquivo para a pasta indicada por folder_id."""
+        """Faz upload de um arquivo para a pasta indicada por folder_id. upload_name define o nome no SharePoint (default: file_path.name)."""
         file_path = Path(file_path)
         if not file_path.exists():
             raise FileNotFoundError(str(file_path))
@@ -213,13 +280,13 @@ class SharePointFileService:
             drive_id = self._get_drive_id(site_id)
         token = self.auth_service.get_access_token()
         content = file_path.read_bytes()
-        name = file_path.name
+        name = (upload_name or file_path.name).strip() or file_path.name
         encoded_name = quote(name, safe="")
         url = f"{self.graph_base_url}/drives/{drive_id}/items/{folder_id}:/{encoded_name}:/content"
         if overwrite:
             url += "?@microsoft.graph.conflictBehavior=replace"
         if len(content) > 4 * 1024 * 1024:
-            return self._upload_large_file(drive_id, folder_id, file_path, content, token)
+            return self._upload_large_file(drive_id, folder_id, name, content, token)
         r = requests.put(
             url,
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/octet-stream"},
@@ -234,12 +301,12 @@ class SharePointFileService:
         self,
         drive_id: str,
         folder_id: str,
-        file_path: Path,
+        name_or_path: str | Path,
         content: bytes,
         access_token: str,
     ) -> dict:
-        """Upload session para arquivos > 4MB."""
-        name = file_path.name
+        """Upload session para arquivos > 4MB. name_or_path: nome do arquivo (str) ou Path."""
+        name = name_or_path.name if isinstance(name_or_path, Path) else str(name_or_path)
         session_url = f"{self.graph_base_url}/drives/{drive_id}/items/{folder_id}:/{quote(name, safe='')}:/createUploadSession"
         r = requests.post(
             session_url,

@@ -22,3 +22,12 @@ def test_feature_info_year():
 def test_feature_folder_path_relative_path():
     path = FeatureFolderPath(year=2025, client_name="Camil Alimentos", folder_name="1 - N/A - Titulo")
     assert path.relative_path() == "2025/Camil Alimentos/1 - N/A - Titulo"
+    assert path.relative_path_active() == "2025/Camil Alimentos/1 - N/A - Titulo"
+
+
+def test_feature_folder_path_closed():
+    path = FeatureFolderPath(
+        year=2025, client_name="Camil Alimentos", folder_name="1 - N/A - Titulo", closed=True
+    )
+    assert path.relative_path() == "2025/Closed/Camil Alimentos/1 - N/A - Titulo"
+    assert path.relative_path_active() == "2025/Camil Alimentos/1 - N/A - Titulo"
