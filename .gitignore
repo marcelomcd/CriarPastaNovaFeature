@@ -22,8 +22,11 @@ backend/venv/
 .env.*.local
 backend/.env
 
-# IDEs (opcional: remover se quiser versionar .cursor/.vscode)
+# IDEs e Cursor (não enviar ao repositório)
 .idea/
+.cursor/
+.vscode/
+.cursorrules
 *.sublime-*
 
 # Logs
