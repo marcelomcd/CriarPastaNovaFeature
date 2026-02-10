@@ -11,6 +11,13 @@ INVALID_FILE_CHARS = re.compile(r'[\\/:*?"<>|\x00]')
 # Tamanho máximo típico para nome de pasta (SharePoint/OneDrive)
 MAX_FOLDER_NAME_LENGTH = 255
 
+# Nomes reservados Windows/SharePoint (case-insensitive) – não podem ser usados como nome de pasta
+RESERVED_FOLDER_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
 
 def normalize_client_name(area_path_last_segment: str) -> str:
     """
@@ -58,6 +65,21 @@ def sanitize_folder_name(title: str, max_length: Optional[int] = None) -> str:
     if len(s) > max_len:
         s = s[: max_len - 3].rstrip() + "..."
     return s.strip()
+
+
+def sanitize_folder_name_for_sharepoint(segment: str) -> str:
+    """
+    Ajusta um segmento de caminho para criação de pasta no SharePoint/Graph API.
+    Remove pontos e espaços no final (rejeitados pela API), evita nomes reservados (CON, NUL, etc.).
+    """
+    if not segment or not str(segment).strip():
+        return "Unnamed"
+    s = str(segment).strip().rstrip(". ")
+    if not s:
+        return "Unnamed"
+    if s.upper() in RESERVED_FOLDER_NAMES:
+        return f"{s}_"
+    return s
 
 
 def sanitize_attachment_filename(name: str, max_length: int = 200) -> str:

@@ -80,20 +80,24 @@ def main() -> int:
             except Exception as e:
                 logger.exception("Feature %s: %s", wi.id, e)
                 err += 1
-                info = work_item_to_feature_info(wi)
-                path = feature_info_to_folder_path(info)
-                log_feature_result(
-                    work_item_id=wi.id,
-                    cliente=path.client_name,
-                    numero_proposta=info.numero_proposta,
-                    titulo=info.title,
-                    anexos_adicionados=[],
-                    link_pasta_sharepoint="—",
-                    erro=str(e),
-                )
+                try:
+                    info = work_item_to_feature_info(wi)
+                    path = feature_info_to_folder_path(info)
+                    log_feature_result(
+                        work_item_id=wi.id,
+                        cliente=path.client_name,
+                        numero_proposta=info.numero_proposta,
+                        titulo=info.title,
+                        anexos_adicionados=[],
+                        link_pasta_sharepoint="—",
+                        erro=str(e),
+                    )
+                except Exception as log_ex:
+                    logger.warning("Feature %s: não foi possível registrar no log HTML: %s", wi.id, log_ex)
         logger.info("Varredura concluída: %s ok, %s erro(s)", ok, err)
         _write_last_run()
-        return 0 if err == 0 else 1
+        # Com PIPELINE_FAIL_ON_FEATURE_ERROR=False (default), o passo não falha quando há erros em Features (relatório HTML tem o detalhe).
+        return 0 if (err == 0 or not settings.PIPELINE_FAIL_ON_FEATURE_ERROR) else 1
     finally:
         end_html_log()
 

@@ -7,6 +7,7 @@ import requests
 
 from app.config import settings
 from app.services.sharepoint_auth import SharePointAuthService
+from app.utils.name_utils import sanitize_folder_name_for_sharepoint
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +106,10 @@ class SharePointFileService:
         return None
 
     def get_folder_id_by_relative_path(self, drive_id: str, relative_path: str) -> str | None:
-        """Obtém o ID da pasta pelo caminho relativo à base. Retorna None se não existir."""
-        full = f"{self.folder_path_base}/{relative_path}".strip("/").replace("//", "/")
+        """Obtém o ID da pasta pelo caminho relativo à base. Usa mesma sanitização que ensure_folder_path."""
+        base_parts = [sanitize_folder_name_for_sharepoint(p) for p in self.folder_path_base.split("/") if p.strip()]
+        rel_parts = [sanitize_folder_name_for_sharepoint(p) for p in relative_path.split("/") if p.strip()]
+        full = "/".join(base_parts + rel_parts)
         return self._get_folder_id(drive_id, full)
 
     def list_folder_children(self, drive_id: str, folder_id: str) -> list[dict]:
@@ -197,6 +200,13 @@ class SharePointFileService:
                 if item.get("name") == name and item.get("folder"):
                     return item["id"]
             raise ValueError(f"Conflito ao criar pasta '{name}' e não encontrada na listagem")
+        if r.status_code in (400, 403):
+            logger.warning(
+                "SharePoint criar pasta '%s' status %s: %s",
+                name,
+                r.status_code,
+                (r.text or "")[:500],
+            )
         r.raise_for_status()
         return r.json()["id"]
 
@@ -204,23 +214,25 @@ class SharePointFileService:
         """
         Garante que a pasta (e subpastas) existem. Cria em cadeia se necessário.
         relative_path: ex. "2025/Camil Alimentos/12345 - N/A - Título"
+        Segmentos são sanitizados para SharePoint (trailing dot/space, nomes reservados).
         Retorna (drive_id, folder_item_id).
         """
-        full_path = f"{self.folder_path_base}/{relative_path}".strip("/").replace("//", "/")
+        rel_parts_raw = [p for p in relative_path.split("/") if p.strip()]
+        rel_parts = [sanitize_folder_name_for_sharepoint(p) for p in rel_parts_raw]
+        base_parts_raw = [p for p in self.folder_path_base.split("/") if p.strip()]
+        base_parts = [sanitize_folder_name_for_sharepoint(p) for p in base_parts_raw]
+        full_path = "/".join(base_parts + rel_parts)
         site_id = self._get_site_id()
         drive_id = self._get_drive_id(site_id)
         existing = self._get_folder_id(drive_id, full_path)
         if existing:
             return (drive_id, existing)
-        base_id = self._get_folder_id(drive_id, self.folder_path_base)
+        base_path_so_far = "/".join(base_parts)
+        base_id = self._get_folder_id(drive_id, base_path_so_far)
         if not base_id:
             base_id = "root"
-            base_parts = self.folder_path_base.split("/")
             for part in base_parts:
-                if not part.strip():
-                    continue
                 base_id = self._create_folder(drive_id, base_id, part)
-        rel_parts = [p for p in relative_path.split("/") if p.strip()]
         parent_id = base_id
         for part in rel_parts:
             token = self.auth_service.get_access_token()

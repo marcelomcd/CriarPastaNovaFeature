@@ -150,6 +150,13 @@ class AzureDevOpsClient:
             headers={"Content-Type": "application/json-patch+json"},
             timeout=30,
         )
+        if r.status_code in (400, 403):
+            logger.warning(
+                "Azure DevOps PATCH work item %s status %s: %s",
+                work_item_id,
+                r.status_code,
+                (r.text or "")[:500],
+            )
         r.raise_for_status()
         data = r.json()
         return WorkItemResponse(

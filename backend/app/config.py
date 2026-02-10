@@ -97,6 +97,29 @@ class Settings(BaseSettings):
             return False
         return False
 
+    # Se True, o passo "Executar varredura" falha (exit 1) quando alguma Feature dá erro. Se False, o passo sempre retorna 0.
+    PIPELINE_FAIL_ON_FEATURE_ERROR: bool = Field(
+        default=False,
+        description="Se True, pipeline falha quando alguma Feature retorna erro (400/403 etc.). Default False = passo sempre verde.",
+    )
+
+    @field_validator("PIPELINE_FAIL_ON_FEATURE_ERROR", mode="before")
+    @classmethod
+    def parse_pipeline_fail_on_feature_error(cls, v: object) -> bool:
+        """Trata variável não definida ou placeholder da pipeline."""
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if not s or s.startswith("$("):
+                return False
+            if s in ("1", "true", "yes"):
+                return True
+            return False
+        return False
+
     # Opcional: pasta OneDrive para arquivos de fechamento
     CLOSED_FEATURES_ONEDRIVE_PATH: str = Field(
         default="",
