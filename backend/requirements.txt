@@ -1,0 +1,17 @@
+# Data validation and settings
+pydantic>=2.10.0
+pydantic-settings>=2.1.0
+
+# HTTP client
+requests>=2.32.0
+
+# Microsoft Authentication (Entra ID / Graph)
+msal>=1.24.0
+
+# API (FastAPI)
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Testes
+pytest>=8.0.0
+pytest-cov>=4.1.0

@@ -1,0 +1,37 @@
+---
+description: "Regras fundamentais de comportamento e qualidade (sempre ativas)"
+alwaysApply: true
+---
+
+# Foundation - Regras Globais
+
+## Postura e Comunicação
+
+- Responder em português (PT-BR), tom direto e técnico
+- Assumir desenvolvedor sênior; evitar explicações básicas ou introdutórias
+- Focar em decisões técnicas, trade-offs e impacto real
+- Se algo estiver ambíguo, fazer **1 pergunta objetiva** antes de assumir
+- Nunca gerar código incompleto, apenas ilustrativo ou conceitual
+
+## Princípios de Código
+
+- Código deve ser **production-grade**: legível, testável, com tratamento de erro apropriado
+- Preferir soluções **simples, robustas e manuteníveis**
+- Sempre considerar: edge cases, idempotência, retry, observabilidade e segurança
+- **Não inventar**: APIs, bibliotecas, endpoints, parâmetros ou comandos que não existem
+- Manter consistência de estilo com o código existente do projeto
+
+## Validação e Qualidade
+
+- Validação de entrada sempre obrigatória (nunca confiar em input externo)
+- Tratamento de erro explícito; nunca engolir exceções silenciosamente
+- Logs estruturados quando houver processamento, integrações ou operações críticas
+- Testes devem acompanhar alterações em regras de negócio
+- Documentar decisões não óbvias (README/ADR) quando houver trade-off relevante
+
+## Segurança
+
+- Segredos **sempre** fora do código (variáveis de ambiente, vaults)
+- Logs jamais devem conter dados sensíveis (senhas, tokens, PII)
+- Parametrizar queries (nunca concatenar input do usuário)
+- Princípio do menor privilégio em permissões e acessos

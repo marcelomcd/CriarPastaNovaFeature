@@ -1,0 +1,68 @@
+---
+description: "Arquitetura de software - complemento às User Preferences"
+alwaysApply: true
+---
+
+# Arquitetura de Software
+
+> **Nota**: Este arquivo complementa as User Preferences do desenvolvedor.
+> Não repete princípios SOLID, KISS, DRY, etc. - apenas reforça aplicações práticas.
+
+## Decisões Arquiteturais Específicas
+
+### Estrutura de Camadas
+- **Apresentação** → **Aplicação** → **Domínio** → **Infraestrutura**
+- Dependência sempre apontando para o domínio (regra de dependência)
+- Domínio não conhece frameworks ou detalhes de infraestrutura
+
+### Segregação de Responsabilidades
+- **Controllers/Handlers**: validação de entrada, orquestração, serialização
+- **Services/Use Cases**: lógica de negócio, coordenação de operações
+- **Repositories**: abstração de persistência (interfaces no domínio)
+- **Entities/Models**: regras de domínio, invariantes, comportamento
+
+### Padrões Táticos
+- **DTOs** para fronteiras de sistema (API, mensageria, integrações)
+- **Value Objects** para conceitos do domínio sem identidade
+- **Aggregates** para garantir consistência de dados relacionados
+- **Domain Events** para comunicação entre bounded contexts
+
+## Anti-patterns a Evitar
+
+❌ Lógica de negócio em controllers/handlers
+❌ Domínio acoplado a framework (ex.: entidades com decorators de ORM)
+❌ Repositórios que retornam entidades de ORM ao invés de entidades de domínio
+❌ Services anêmicos (apenas delegação sem lógica)
+❌ God classes ou módulos com múltiplas responsabilidades
+❌ Dependências circulares entre camadas
+
+## Critérios de Qualidade
+
+Ao revisar/gerar código, verificar:
+1. **Single Responsibility**: cada classe/módulo tem uma única razão para mudar?
+2. **Testabilidade**: consigo testar sem infraestrutura (banco, APIs externas)?
+3. **Clareza**: a intenção do código é óbvia para outro desenvolvedor sênior?
+4. **Extensibilidade**: novos requisitos exigem modificação ou apenas adição?
+5. **Performance**: a solução escala sem refatoração completa?
+
+## Quando Aplicar Patterns
+
+**Use** quando:
+- Resolver problema recorrente conhecido
+- Melhorar testabilidade ou manutenibilidade
+- Facilitar evolução futura previsível
+
+**Não use** quando:
+- Problema é trivial (overengineering)
+- Pattern adiciona complexidade sem ganho claro
+- Time não conhece o pattern (risco de má implementação)
+
+## Documentação de Arquitetura
+
+Para decisões arquiteturais relevantes, registre:
+- **Contexto**: qual problema estamos resolvendo?
+- **Decisão**: qual caminho escolhemos?
+- **Alternativas**: o que foi considerado e descartado?
+- **Consequências**: trade-offs aceitos
+
+Formato: ADR (Architecture Decision Records) ou seção no README

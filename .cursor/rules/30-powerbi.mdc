@@ -1,0 +1,308 @@
+---
+description: "Power BI - modelagem semântica, DAX e powerbi-modeling-mcp"
+alwaysApply: false
+---
+
+# Power BI - Modelagem Semântica e DAX
+
+## Contexto: powerbi-modeling-mcp
+
+Quando trabalhar com Power BI via **powerbi-modeling-mcp**:
+- Foco em **modelo semântico** (tabelas, colunas, medidas, relacionamentos)
+- **Não** alterar visuais, páginas ou formatação de relatório
+- Sempre explicar: **o que mudou**, **por que mudou**, **impacto no modelo**
+- Testar DAX antes de aplicar (usar DAX Studio se disponível)
+
+---
+
+## Modelagem de Dados
+
+### Schema Design
+
+**Star Schema** (preferível para BI):
+- **Fact Tables**: métricas quantitativas (vendas, pedidos)
+- **Dimension Tables**: contexto descritivo (produtos, clientes, tempo)
+- Relacionamentos 1:N de dimensão → fato
+
+```
+┌────────────┐       ┌──────────┐       ┌────────────┐
+│  DimDate   │──────→│ FactSales│←──────│ DimProduct │
+└────────────┘       └──────────┘       └────────────┘
+                           ↑
+                           │
+                     ┌────────────┐
+                     │ DimCustomer│
+                     └────────────┘
+```
+
+**Evitar**:
+- Relacionamentos N:N sem tabela ponte
+- Relacionamentos bidirecionais (podem causar ambiguidade)
+- Colunas calculadas quando medidas são suficientes
+
+### Relacionamentos
+
+```dax
+// ✅ Relacionamento claro 1:N
+FactSales[ProductID] → DimProduct[ProductID]
+FactSales[CustomerID] → DimCustomer[CustomerID]
+
+// ⚠️ Relacionamento ambíguo (múltiplos caminhos)
+// Use role-playing dimensions com USERELATIONSHIP
+FactSales[OrderDate] → DimDate[Date]  (ativo)
+FactSales[ShipDate] → DimDate[Date]   (inativo)
+
+// Medida que usa relacionamento inativo:
+Ship Delay = 
+CALCULATE(
+    [Total Sales],
+    USERELATIONSHIP(FactSales[ShipDate], DimDate[Date])
+)
+```
+
+---
+
+## DAX - Data Analysis Expressions
+
+### Estrutura de Medidas
+
+**Usar VAR** para legibilidade e performance (variáveis evitam recálculo):
+
+```dax
+// ✅ Bom: VAR para clareza
+Total Revenue = 
+VAR SalesAmount = SUM(FactSales[Amount])
+VAR DiscountAmount = SUM(FactSales[Discount])
+RETURN
+    SalesAmount - DiscountAmount
+
+// ❌ Ruim: repetir expressões
+Total Revenue = 
+SUM(FactSales[Amount]) - SUM(FactSales[Discount])
+```
+
+**Medidas devem ser**:
+- **Estáveis**: mesmo resultado para mesma entrada
+- **Performáticas**: evitar iterações desnecessárias
+- **Legíveis**: nomes claros, usar VAR quando complexo
+
+### Context Transition
+
+Entender **Row Context** vs **Filter Context**:
+
+```dax
+// Row context (iteração) - INCORRECT
+Sales Per Product = SUM(FactSales[Amount])  // ❌ Ignora linha atual
+
+// Filter context (agregação correta) - CORRECT
+Sales Per Product = 
+SUMX(
+    DimProduct,
+    CALCULATE(SUM(FactSales[Amount]))  // ✅ Context transition
+)
+```
+
+### SWITCH vs IF Aninhado
+
+```dax
+// ✅ Preferir SWITCH (mais legível)
+Category Label = 
+SWITCH(
+    TRUE(),
+    [Total Sales] >= 1000000, "High",
+    [Total Sales] >= 100000, "Medium",
+    [Total Sales] >= 10000, "Low",
+    "Very Low"
+)
+
+// ❌ Evitar IF aninhado
+Category Label = 
+IF(
+    [Total Sales] >= 1000000, "High",
+    IF(
+        [Total Sales] >= 100000, "Medium",
+        IF([Total Sales] >= 10000, "Low", "Very Low")
+    )
+)
+```
+
+### BLANK() vs 0
+
+```dax
+// ✅ BLANK() quando ausência de dado é diferente de zero
+Average Sales = 
+VAR TotalSales = SUM(FactSales[Amount])
+VAR OrderCount = COUNTROWS(FactSales)
+RETURN
+    IF(OrderCount = 0, BLANK(), DIVIDE(TotalSales, OrderCount))
+
+// ❌ Retornar 0 pode induzir interpretação errada
+Average Sales = DIVIDE(SUM(FactSales[Amount]), COUNTROWS(FactSales), 0)
+```
+
+### Time Intelligence
+
+Usar funções DAX Time Intelligence com tabela de datas:
+
+```dax
+// ✅ Sales YTD (Year-to-Date)
+Sales YTD = 
+TOTALYTD(
+    [Total Sales],
+    DimDate[Date]
+)
+
+// ✅ Sales vs Last Year
+Sales vs LY = 
+VAR CurrentSales = [Total Sales]
+VAR LastYearSales = 
+    CALCULATE(
+        [Total Sales],
+        DATEADD(DimDate[Date], -1, YEAR)
+    )
+RETURN
+    CurrentSales - LastYearSales
+
+// ✅ Same Period Last Year
+Sales SPLY = 
+CALCULATE(
+    [Total Sales],
+    SAMEPERIODLASTYEAR(DimDate[Date])
+)
+```
+
+**Requisitos**:
+- Tabela de datas marcada como **Date Table**
+- Coluna de data contínua (sem gaps)
+- Relacionamento com fact tables
+
+### Performance
+
+**Evitar**:
+- Colunas calculadas quando medidas são suficientes (medidas calculam sob demanda)
+- Iteradores desnecessários (`SUMX`, `FILTER`) quando funções agregadas (`SUM`) bastam
+- `RELATED` em colunas calculadas (melhor usar relacionamentos)
+
+```dax
+// ❌ Coluna calculada (recalcula em todo refresh)
+ProductCategory = RELATED(DimProduct[Category])
+
+// ✅ Usar relacionamento direto (sem calcular)
+// Simplesmente arrastar Category da dimensão para visual
+
+// ❌ SUMX desnecessário
+Total Sales = SUMX(FactSales, FactSales[Amount])
+
+// ✅ SUM direto (mais rápido)
+Total Sales = SUM(FactSales[Amount])
+```
+
+**Quando usar colunas calculadas**:
+- Filtrar/agrupar por valor calculado (ex: faixas de idade)
+- Usado em múltiplos visuais e não muda frequentemente
+
+---
+
+## Boas Práticas de Modelagem
+
+### Nomes de Objetos
+
+```dax
+// ✅ Claro e padronizado
+[Total Sales]
+[Sales YTD]
+[Sales vs LY %]
+
+DimCustomer
+FactOrders
+
+// ❌ Nomes confusos
+[Measure1]
+[Column1]
+tbl_customers
+```
+
+### Organização
+
+- **Display Folders**: agrupar medidas relacionadas (`Sales\Current`, `Sales\Time Intelligence`)
+- **Descrições**: adicionar descrição em medidas complexas
+- **Formatos**: definir formato numérico/moeda apropriado
+- **Ocultar colunas técnicas**: IDs, keys usados apenas em relacionamentos
+
+### Tipos de Dados
+
+- **Datas**: `Date` (não `DateTime` se não houver hora)
+- **IDs**: `Text` (mesmo se numérico, evitar agregações acidentais)
+- **Valores monetários**: `Decimal` com formato de moeda
+- **Percentuais**: `Decimal` com formato de porcentagem
+
+---
+
+## powerbi-modeling-mcp: Workflow
+
+### 1. Análise de Requisito
+
+Antes de alterar modelo:
+- Qual problema de negócio está sendo resolvido?
+- A mudança afeta relacionamentos existentes?
+- Há impacto em medidas/colunas dependentes?
+
+### 2. Implementação
+
+```python
+# Exemplo via MCP (conceitual)
+from powerbi_modeling_mcp import Model
+
+model = Model.connect("localhost:12345")
+
+# Criar medida
+model.add_measure(
+    table="FactSales",
+    name="Total Revenue",
+    expression="SUM(FactSales[Amount]) - SUM(FactSales[Discount])",
+    format="Currency"
+)
+
+# Criar relacionamento
+model.add_relationship(
+    from_table="FactSales",
+    from_column="ProductID",
+    to_table="DimProduct",
+    to_column="ProductID",
+    cardinality="Many-to-One"
+)
+
+model.save()
+```
+
+### 3. Validação
+
+Após alterar modelo:
+- Testar medidas DAX no DAX Studio (performance, resultado correto)
+- Verificar relacionamentos (sem ambiguidade)
+- Validar filtros (cross-filtering funciona como esperado)
+- Documentar mudança (descrição da medida/tabela)
+
+### 4. Comunicação
+
+Ao reportar mudança:
+```
+✅ Criada medida [Sales YTD] em FactSales
+   - Fórmula: TOTALYTD([Total Sales], DimDate[Date])
+   - Impacto: permite análise acumulada no ano
+   - Dependência: requer tabela DimDate marcada como Date Table
+
+⚠️ Alterado relacionamento FactSales → DimDate
+   - Antes: bidirecional
+   - Depois: unidirecional (DimDate filtra FactSales)
+   - Motivo: evitar ambiguidade em cálculos com múltiplas tabelas fato
+```
+
+---
+
+## Recursos
+
+- **DAX Guide**: https://dax.guide (referência de funções)
+- **SQLBI**: https://sqlbi.com (padrões e best practices)
+- **DAX Studio**: ferramenta gratuita para testar/otimizar DAX
+- **Tabular Editor**: editor avançado de modelos (complementa Power BI Desktop)

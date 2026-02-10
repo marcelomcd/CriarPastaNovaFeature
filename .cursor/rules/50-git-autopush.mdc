@@ -1,0 +1,43 @@
+---
+description: "Commit e push automáticos para origin e azure após alterações (ConvertMPP To DevOps)"
+alwaysApply: true
+---
+
+# Git: Commit e push automáticos (dois remotes)
+
+## Regra obrigatória neste repositório
+
+**Sempre** que forem feitas alterações em arquivos do projeto (código, config, docs, pipelines, etc.):
+
+1. **Adicionar** ao stage apenas os arquivos alterados (respeitando `.gitignore` — nunca `.env`, logs, secrets).
+2. **Commit** com mensagem descritiva (Conventional Commits quando fizer sentido: `feat:`, `fix:`, `docs:`, `ci:`, etc.).
+3. **Push para os dois remotes**, na ordem abaixo:
+   - `git push origin main`  (GitHub)
+   - `git push azure main`   (Azure Repos)
+
+Não pedir confirmação ao usuário para o commit/push; executar como parte da conclusão da tarefa.
+
+## Comandos
+
+```bash
+git add <arquivos alterados>
+git commit -m "<tipo>: <descrição clara>"
+git push origin main
+git push azure main
+```
+
+## Exclusões
+
+Não incluir no `git add`:
+
+- `.env`, `backend/.env`
+- `backend/logs/`, `*.log`
+- Arquivos listados em `.gitignore`
+- Nada que contenha secrets ou dados locais
+
+## Remotes
+
+- **origin** = GitHub (marcelomcd/Microsoft-Project-to-Azure-DevOps)
+- **azure** = Azure Repos (qualiit/ALM/Qualiit.AzureProjects.ProjectIntegration)
+
+Objetivo: manter o código sincronizado nos dois repositórios após qualquer alteração.

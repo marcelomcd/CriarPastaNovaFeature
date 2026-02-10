@@ -1,0 +1,479 @@
+---
+description: "Frontend - JavaScript, TypeScript, React e Node.js"
+alwaysApply: false
+---
+
+# Frontend: JavaScript, TypeScript, React, Node.js
+
+## JavaScript/TypeScript
+
+### Tipagem Estática (TypeScript)
+
+**Preferir TypeScript** em qualquer código de aplicação (não scripts descartáveis).
+
+```typescript
+// ✅ Bom: tipos explícitos
+interface User {
+  id: string;
+  email: string;
+  age: number;
+  roles: string[];
+}
+
+function getActiveUsers(users: User[]): User[] {
+  return users.filter(u => u.roles.includes('active'));
+}
+
+// ❌ Evitar: any em código de produção
+function processData(data: any): any {
+  return data.map((x: any) => x.value);
+}
+```
+
+**Evitar `any`**:
+- Use `unknown` quando tipo é realmente desconhecido (force validação)
+- Use generics quando tipo é parametrizável
+- Use union types para conjunto fechado de possibilidades
+
+```typescript
+// ✅ unknown + type guard
+function parseJson(json: string): unknown {
+  return JSON.parse(json);
+}
+
+function processUser(data: unknown): User {
+  if (!isUser(data)) {
+    throw new Error("Invalid user data");
+  }
+  return data;
+}
+
+function isUser(obj: unknown): obj is User {
+  return (
+    typeof obj === "object" &&
+    obj !== null &&
+    "id" in obj &&
+    "email" in obj
+  );
+}
+```
+
+### Imutabilidade e Funções Puras
+
+```typescript
+// ✅ Imutável (spread operator)
+const updatedUser = { ...user, email: newEmail };
+const newItems = [...items, newItem];
+
+// ❌ Mutação direta
+user.email = newEmail;  // Evitar em estado compartilhado
+items.push(newItem);    // Pode causar bugs em React
+```
+
+**Preferir funções puras** (sem efeitos colaterais):
+
+```typescript
+// ✅ Função pura (previsível, testável)
+function calculateDiscount(price: number, rate: number): number {
+  return price * (1 - rate);
+}
+
+// ❌ Função impura (efeito colateral global)
+let totalDiscount = 0;
+function applyDiscount(price: number, rate: number): number {
+  totalDiscount += price * rate;  // Modifica estado global
+  return price * (1 - rate);
+}
+```
+
+### Tratamento de Erros
+
+```typescript
+// ✅ Try/catch explícito em operações que podem falhar
+async function fetchUser(id: string): Promise<User> {
+  try {
+    const response = await fetch(`/api/users/${id}`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    logger.error("fetch_user_failed", { id, error });
+    throw new UserFetchError(`Failed to fetch user ${id}`, { cause: error });
+  }
+}
+
+// ✅ Custom errors com contexto
+class UserFetchError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "UserFetchError";
+  }
+}
+```
+
+### Linting e Formatação
+
+- **ESLint** com configuração strict (ex: `@typescript-eslint/recommended`)
+- **Prettier** para formatação automática
+- **Hooks** no pre-commit (Husky + lint-staged)
+
+```json
+// .eslintrc.json
+{
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:@typescript-eslint/recommended-requiring-type-checking"
+  ],
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/explicit-function-return-type": "warn",
+    "no-console": "warn"
+  }
+}
+```
+
+---
+
+## React
+
+### Arquitetura de Componentes
+
+**Separar UI de lógica**:
+
+```typescript
+// ✅ Componente de apresentação (UI apenas)
+interface UserCardProps {
+  user: User;
+  onEdit: () => void;
+}
+
+export function UserCard({ user, onEdit }: UserCardProps) {
+  return (
+    <div className="card">
+      <h3>{user.name}</h3>
+      <button onClick={onEdit}>Edit</button>
+    </div>
+  );
+}
+
+// ✅ Container com lógica (hook customizado)
+function useUser(id: string) {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    fetchUser(id).then(setUser).finally(() => setLoading(false));
+  }, [id]);
+  
+  const updateUser = async (updates: Partial<User>) => {
+    const updated = await updateUserApi(id, updates);
+    setUser(updated);
+  };
+  
+  return { user, loading, updateUser };
+}
+
+// Uso
+function UserPage({ id }: { id: string }) {
+  const { user, loading, updateUser } = useUser(id);
+  
+  if (loading) return <Spinner />;
+  if (!user) return <NotFound />;
+  
+  return <UserCard user={user} onEdit={() => updateUser({ ... })} />;
+}
+```
+
+### Hooks e Estado
+
+**Preferir hooks customizados** para lógica reutilizável:
+
+```typescript
+// ✅ Hook customizado (reutilizável)
+function useFetch<T>(url: string): {
+  data: T | null;
+  loading: boolean;
+  error: Error | null;
+} {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  
+  useEffect(() => {
+    fetch(url)
+      .then(res => res.json())
+      .then(setData)
+      .catch(setError)
+      .finally(() => setLoading(false));
+  }, [url]);
+  
+  return { data, loading, error };
+}
+
+// Uso
+function UserList() {
+  const { data, loading, error } = useFetch<User[]>("/api/users");
+  
+  if (loading) return <Spinner />;
+  if (error) return <ErrorMessage error={error} />;
+  
+  return <ul>{data?.map(u => <li key={u.id}>{u.name}</li>)}</ul>;
+}
+```
+
+**Evitar estado global desnecessário**:
+- Use Context apenas para dados verdadeiramente globais (theme, auth)
+- Preferir composição e props drilling para 2-3 níveis
+- Considerar Zustand/Jotai para estado complexo (mais leve que Redux)
+
+### Performance
+
+**Memoização consciente** (evitar prematuro):
+
+```typescript
+// ✅ Memoizar apenas se houver evidência de re-render custoso
+const MemoizedList = React.memo(function UserList({ users }: { users: User[] }) {
+  return (
+    <ul>
+      {users.map(u => (
+        <ExpensiveUserCard key={u.id} user={u} />
+      ))}
+    </ul>
+  );
+});
+
+// ✅ useMemo para computações caras
+function Dashboard({ data }: { data: DataPoint[] }) {
+  const chartData = useMemo(() => {
+    return transformToChartFormat(data);  // Operação custosa
+  }, [data]);
+  
+  return <Chart data={chartData} />;
+}
+
+// ❌ Evitar memoização sem necessidade
+const SimpleButton = React.memo(({ onClick }: { onClick: () => void }) => {
+  return <button onClick={onClick}>Click</button>;  // Muito simples para memoizar
+});
+```
+
+### Acessibilidade
+
+Sempre incluir:
+- **Labels** em inputs: `<label htmlFor="email">Email</label>`
+- **ARIA roles** quando semântica HTML não é clara
+- **Keyboard navigation**: garantir que tudo funciona sem mouse
+- **Focus management**: restaurar foco após modais/dialogs
+
+```tsx
+// ✅ Acessível
+function SearchInput() {
+  return (
+    <div>
+      <label htmlFor="search">Search users</label>
+      <input
+        id="search"
+        type="text"
+        aria-describedby="search-help"
+        placeholder="Enter name..."
+      />
+      <span id="search-help" className="sr-only">
+        Search by user name or email
+      </span>
+    </div>
+  );
+}
+
+// ❌ Não acessível
+function SearchInput() {
+  return <input placeholder="Search" />;  // Sem label
+}
+```
+
+### Patterns do Repositório
+
+Respeitar convenções do projeto:
+- **Router**: React Router, Next.js, Remix (seguir pattern existente)
+- **Estado**: Context, Zustand, Redux (não misturar sem razão)
+- **Fetch**: `fetch`, axios, React Query (usar biblioteca do projeto)
+- **Styling**: CSS Modules, Tailwind, styled-components (manter consistência)
+
+---
+
+## Node.js (Backend)
+
+### Estrutura em Camadas
+
+```
+src/
+├── controllers/     # HTTP handlers (Express, Fastify)
+├── services/        # Lógica de negócio
+├── repositories/    # Acesso a dados (DB, APIs externas)
+├── models/          # DTOs, entidades
+├── middlewares/     # Auth, logging, error handling
+└── routes/          # Definição de endpoints
+```
+
+**Exemplo**:
+
+```typescript
+// routes/users.ts
+import { Router } from 'express';
+import { UserController } from '../controllers/UserController';
+
+export const userRoutes = Router();
+const controller = new UserController();
+
+userRoutes.get('/users/:id', controller.getUser);
+userRoutes.post('/users', controller.createUser);
+
+// controllers/UserController.ts
+export class UserController {
+  async getUser(req: Request, res: Response) {
+    try {
+      const user = await userService.getUserById(req.params.id);
+      res.json(user);
+    } catch (error) {
+      next(error);  // Delegado ao error handler middleware
+    }
+  }
+}
+
+// services/UserService.ts
+export class UserService {
+  constructor(private userRepo: UserRepository) {}
+  
+  async getUserById(id: string): Promise<User> {
+    const user = await this.userRepo.findById(id);
+    if (!user) {
+      throw new NotFoundError(`User ${id} not found`);
+    }
+    return user;
+  }
+}
+
+// repositories/UserRepository.ts
+export class UserRepository {
+  async findById(id: string): Promise<User | null> {
+    const row = await db.query('SELECT * FROM users WHERE id = $1', [id]);
+    return row ? mapToUser(row) : null;
+  }
+}
+```
+
+### Validação de Input
+
+**Sempre validar** entrada de APIs:
+
+```typescript
+import { z } from 'zod';
+
+const CreateUserSchema = z.object({
+  email: z.string().email(),
+  age: z.number().int().min(18).max(120),
+  name: z.string().min(1).max(200),
+});
+
+export async function createUser(req: Request, res: Response) {
+  try {
+    const data = CreateUserSchema.parse(req.body);  // Throws se inválido
+    const user = await userService.createUser(data);
+    res.status(201).json(user);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ errors: error.errors });
+    }
+    throw error;
+  }
+}
+```
+
+### Observabilidade
+
+**Logging estruturado**:
+
+```typescript
+import pino from 'pino';
+
+const logger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+});
+
+// Adicionar request ID (middleware)
+app.use((req, res, next) => {
+  req.id = crypto.randomUUID();
+  req.log = logger.child({ request_id: req.id });
+  next();
+});
+
+// Usar em handlers
+app.get('/users/:id', async (req, res) => {
+  req.log.info({ user_id: req.params.id }, 'fetching user');
+  const user = await userService.getUserById(req.params.id);
+  req.log.info({ user_id: user.id }, 'user fetched');
+  res.json(user);
+});
+```
+
+**Error handling centralizado**:
+
+```typescript
+// middlewares/errorHandler.ts
+export function errorHandler(
+  err: Error,
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  req.log.error({ err }, 'request failed');
+  
+  if (err instanceof NotFoundError) {
+    return res.status(404).json({ error: err.message });
+  }
+  
+  if (err instanceof ValidationError) {
+    return res.status(400).json({ error: err.message, details: err.details });
+  }
+  
+  // Erro genérico (não expor detalhes internos)
+  res.status(500).json({ error: 'Internal server error' });
+}
+
+app.use(errorHandler);
+```
+
+### Segurança
+
+```typescript
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+
+// Headers de segurança
+app.use(helmet());
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,  // 15 minutos
+  max: 100,  // 100 requests por IP
+});
+app.use('/api', limiter);
+
+// Nunca logar segredos
+logger.info({ 
+  user_id: user.id,
+  // password: user.password,  // ❌ NUNCA
+});
+
+// Variáveis de ambiente
+import { z } from 'zod';
+
+const EnvSchema = z.object({
+  DATABASE_URL: z.string().url(),
+  JWT_SECRET: z.string().min(32),
+  NODE_ENV: z.enum(['development', 'production', 'test']),
+});
+
+export const env = EnvSchema.parse(process.env);
+```

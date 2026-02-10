@@ -1,0 +1,78 @@
+# Pipeline de varredura: pastas SharePoint por Feature (FluxoNovasFeatures)
+# Executa periodicamente; para tempo real use a API FastAPI com Service Hooks.
+# Variáveis: AZURE_DEVOPS_PAT, SHAREPOINT_*, AZURE_DEVOPS_ORG, AZURE_DEVOPS_PROJECT (ver docs/PIPELINE_VARIABLES_AZURE_DEVOPS.md)
+
+trigger: none
+
+schedules:
+  - cron: "0 10 * * *"   # 10:00 UTC (ex.: 7:00 BRT) todo dia
+    displayName: Varredura diária - pastas Feature
+    branches:
+      include:
+        - main
+        - master
+    always: true
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  PYTHON_VERSION: "3.10"
+
+steps:
+  - checkout: self
+    displayName: "Checkout do código"
+    fetchDepth: 1
+
+  - task: UsePythonVersion@0
+    displayName: "Configurar Python $(PYTHON_VERSION)"
+    inputs:
+      versionSpec: "$(PYTHON_VERSION)"
+      addToPath: true
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r backend/requirements.txt
+    displayName: "Instalar dependências Python"
+    workingDirectory: "$(Build.SourcesDirectory)"
+
+  - script: |
+      if [ -z "$(AZURE_DEVOPS_PAT)" ]; then
+        echo "##vso[task.logissue type=error]AZURE_DEVOPS_PAT não configurado"
+        exit 1
+      fi
+      if [ -z "$(SHAREPOINT_CLIENT_ID)" ] || [ -z "$(SHAREPOINT_CLIENT_SECRET)" ] || [ -z "$(SHAREPOINT_TENANT_ID)" ]; then
+        echo "##vso[task.logissue type=error]Variáveis SharePoint obrigatórias"
+        exit 1
+      fi
+      echo "Variáveis de ambiente validadas"
+    displayName: "Validar variáveis"
+    env:
+      AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
+      SHAREPOINT_CLIENT_ID: $(SHAREPOINT_CLIENT_ID)
+      SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
+      SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
+
+  - script: |
+      cd backend
+      python pipeline_feature_folders.py
+    displayName: "Executar varredura (pastas + link + anexos)"
+    env:
+      AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
+      AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
+      AZURE_DEVOPS_PROJECT: $(AZURE_DEVOPS_PROJECT)
+      SHAREPOINT_CLIENT_ID: $(SHAREPOINT_CLIENT_ID)
+      SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
+      SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
+      SHAREPOINT_SITE_URL: $(SHAREPOINT_SITE_URL)
+      SHAREPOINT_FOLDER_PATH_BASE: $(SHAREPOINT_FOLDER_PATH_BASE)
+      LOG_LEVEL: $(LOG_LEVEL)
+    continueOnError: false
+
+  - task: PublishBuildArtifacts@1
+    displayName: "Publicar logs"
+    inputs:
+      pathToPublish: "backend/logs"
+      artifactName: "logs"
+      publishLocation: "Container"
+    condition: always()

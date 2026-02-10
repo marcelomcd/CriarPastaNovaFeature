@@ -1,0 +1,351 @@
+---
+description: "Workflows e procedimentos específicos do projeto"
+alwaysApply: false
+---
+
+# Workflows Específicos
+
+> **Importante**: Este arquivo contém procedimentos que devem ser executados **explicitamente**, não automaticamente.
+
+---
+
+## Git: Commit e Push
+
+### Quando Executar
+
+- Após completar uma funcionalidade ou correção
+- Quando solicitado explicitamente pelo usuário
+- **Nunca automaticamente** sem confirmação
+
+### Estratégia de Commit
+
+**Commits atômicos** (uma mudança lógica por commit):
+
+```bash
+# ✅ Bom: commits separados e descritivos
+git add src/services/user-service.ts
+git commit -m "feat(user): add email validation in user service"
+
+git add src/api/routes/users.ts
+git commit -m "feat(api): expose user creation endpoint"
+
+git add tests/user-service.test.ts
+git commit -m "test(user): add unit tests for email validation"
+
+# ❌ Evitar: commit gigante sem contexto
+git add .
+git commit -m "updates"
+```
+
+### Mensagens de Commit
+
+Seguir **Conventional Commits**:
+
+```
+<type>(<scope>): <description>
+
+[optional body]
+
+[optional footer]
+```
+
+**Tipos**:
+- `feat`: nova funcionalidade
+- `fix`: correção de bug
+- `docs`: apenas documentação
+- `refactor`: refatoração sem mudança de comportamento
+- `test`: adição/modificação de testes
+- `chore`: tarefas de manutenção (deps, config)
+- `perf`: melhoria de performance
+- `ci`: mudanças em pipelines
+
+**Exemplos**:
+```bash
+git commit -m "feat(etl): add incremental load for customer table"
+git commit -m "fix(api): handle null values in user response"
+git commit -m "docs(readme): update setup instructions"
+git commit -m "refactor(service): extract validation to separate module"
+git commit -m "perf(query): add index on created_at column"
+```
+
+### Procedimento Padrão
+
+```bash
+# 1. Verificar status
+git status
+
+# 2. Adicionar arquivos (seletivamente)
+git add src/path/to/file.ts
+git add tests/path/to/test.ts
+
+# 3. Commit com mensagem descritiva
+git commit -m "feat(scope): clear description"
+
+# 4. Push para remoto apropriado
+git push azure main      # Azure DevOps (principal)
+# ou
+git push origin main     # GitHub (secundário, se aplicável)
+```
+
+### Projeto ConvertMPP To DevOps (regra específica)
+
+Neste repositório, **sempre** que houver alterações commitadas:
+
+1. Fazer **commit** com mensagem descritiva (Conventional Commits).
+2. Fazer **push para os dois remotes** (não apenas um):
+   ```bash
+   git push azure main
+   git push origin main
+   ```
+- **azure** = Azure Repos (Qualiit.AzureProjects.ProjectIntegration)
+- **origin** = GitHub (marcelomcd/Microsoft-Project-to-Azure-DevOps) — portfólio
+
+Assim o código fica sincronizado no Azure DevOps e no GitHub.
+
+### Exclusões (.gitignore)
+
+**Nunca** commitar:
+- Arquivos de configuração local (`.env`, `.vscode/settings.json`)
+- Secrets (chaves, tokens, senhas)
+- Arquivos gerados (`__pycache__`, `node_modules`, `dist`, `build`)
+- Logs (`*.log`, `logs/`)
+- Dados sensíveis (dumps de banco, arquivos de teste com PII)
+
+```gitignore
+# Environment
+.env
+.env.local
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+```
+
+---
+
+## Deploy: Checklist
+
+### Pré-Deploy
+
+- [ ] Todos os testes passando (CI verde)
+- [ ] Code review aprovado
+- [ ] Sem secrets hardcoded
+- [ ] Variáveis de ambiente documentadas
+- [ ] Migrations testadas (se aplicável)
+- [ ] Rollback strategy definida
+- [ ] Stakeholders notificados (se crítico)
+
+### Deploy
+
+```bash
+# 1. Verificar branch e commits
+git log --oneline -5
+git status
+
+# 2. Tag de release (semantic versioning)
+git tag -a v1.2.3 -m "Release 1.2.3: Add user authentication"
+git push azure --tags
+
+# 3. Trigger pipeline (Azure DevOps)
+# Via UI ou CLI
+az pipelines run \
+  --name "MyPipeline" \
+  --branch main \
+  --org https://dev.azure.com/myorg \
+  --project myproject
+
+# 4. Monitorar deploy
+# Verificar logs, health checks, métricas
+```
+
+### Pós-Deploy
+
+- [ ] Health checks respondendo OK
+- [ ] Smoke tests passando (endpoints críticos)
+- [ ] Logs sem erros inesperados
+- [ ] Métricas estáveis (CPU, memória, latência)
+- [ ] Rollback disponível se necessário
+
+### Rollback
+
+```bash
+# 1. Identificar última versão estável
+git tag
+
+# 2. Reverter código
+git revert <commit_hash>
+# ou
+git reset --hard <previous_commit>
+
+# 3. Re-deploy versão anterior
+git push azure main --force  # ⚠️ Usar com cuidado
+
+# 4. Notificar time e investigar causa raiz
+```
+
+---
+
+## Code Review: Guidelines
+
+### O que Revisar
+
+**Funcionalidade**:
+- [ ] Código resolve o problema proposto?
+- [ ] Edge cases cobertos?
+- [ ] Testes adequados?
+
+**Qualidade**:
+- [ ] Código legível e auto-explicativo?
+- [ ] Nomes de variáveis/funções claros?
+- [ ] Sem duplicação desnecessária?
+- [ ] Separação de responsabilidades adequada?
+
+**Segurança**:
+- [ ] Input validado?
+- [ ] Secrets não expostos?
+- [ ] Queries parametrizadas?
+- [ ] Logs sem dados sensíveis?
+
+**Performance**:
+- [ ] Sem N+1 queries?
+- [ ] Estruturas de dados apropriadas?
+- [ ] Processar grandes volumes em chunks?
+
+### Comentários Construtivos
+
+```
+✅ Bom: específico e construtivo
+"Esta função poderia usar early return para reduzir aninhamento:
+if (!user) return null;
+// resto do código no nível base"
+
+❌ Ruim: vago e não acionável
+"Este código está confuso."
+```
+
+---
+
+## Hotfix: Procedimento de Emergência
+
+Quando bug crítico em produção:
+
+```bash
+# 1. Criar branch hotfix
+git checkout main
+git pull azure main
+git checkout -b hotfix/critical-bug-fix
+
+# 2. Fazer correção mínima necessária
+# Evitar refatorações ou melhorias não relacionadas
+
+# 3. Testar localmente
+npm test
+# ou
+pytest
+
+# 4. Commit e push
+git add src/path/to/fix.ts
+git commit -m "fix(critical): resolve null pointer in payment flow"
+git push azure hotfix/critical-bug-fix
+
+# 5. Criar PR com label de urgência
+# Deploy direto se processo permitir
+
+# 6. Após deploy bem-sucedido, merge para main
+git checkout main
+git merge hotfix/critical-bug-fix
+git push azure main
+
+# 7. Deletar branch hotfix
+git branch -d hotfix/critical-bug-fix
+git push azure --delete hotfix/critical-bug-fix
+```
+
+---
+
+## Manutenção: Dependências
+
+### Atualizar Dependências
+
+```bash
+# Python
+pip list --outdated
+pip install --upgrade <package>
+pip freeze > requirements.txt
+
+# Node.js
+npm outdated
+npm update
+npm audit fix  # Corrigir vulnerabilidades
+
+# Verificar breaking changes
+# Ler CHANGELOG dos pacotes atualizados
+# Rodar testes completos
+```
+
+### Auditoria de Segurança
+
+```bash
+# Python
+pip-audit
+
+# Node.js
+npm audit
+npm audit fix
+
+# Snyk (multi-linguagem)
+snyk test
+snyk monitor  # Monitoramento contínuo
+```
+
+---
+
+## Documentação: Quando Atualizar
+
+Atualizar documentação quando:
+- Adicionar nova funcionalidade pública
+- Mudar comportamento de API/interface
+- Adicionar/remover dependência crítica
+- Alterar processo de setup/deploy
+- Tomar decisão arquitetural relevante (ADR)
+
+**Exemplo de ADR** (Architecture Decision Record):
+
+```markdown
+# ADR-001: Migração de SQLite para PostgreSQL
+
+## Status
+Aceito
+
+## Contexto
+Volume de dados crescendo (>100GB), SQLite atingindo limites de concorrência.
+
+## Decisão
+Migrar para PostgreSQL 15.
+
+## Consequências
+- **Positivas**: melhor concorrência, suporte a particionamento, JSONB
+- **Negativas**: maior complexidade operacional, custo de infraestrutura
+- **Neutras**: equipe já familiar com PostgreSQL
+
+## Data
+2025-02-09
+```

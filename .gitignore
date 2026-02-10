@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual Environment
+venv/
+env/
+.venv
+backend/venv/
+
+# Environment Variables (NUNCA commitar)
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# IDEs (opcional: remover se quiser versionar .cursor/.vscode)
+.idea/
+*.sublime-*
+
+# Logs
+backend/logs/*.json
+backend/logs/*.txt
+*.log
+*.log.*
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary
+*.tmp
+*.temp
+.cache/

@@ -1,0 +1,388 @@
+---
+description: "Data Engineering - SQL, PostgreSQL, ETL e práticas de dados"
+alwaysApply: false
+---
+
+# Data Engineering
+
+## SQL - Padrões Gerais
+
+### Qualidade de Queries
+
+```sql
+-- ✅ Bom: explícito, legível, performático
+SELECT 
+    u.user_id,
+    u.email,
+    COUNT(DISTINCT o.order_id) as total_orders,
+    SUM(o.total_amount) as revenue
+FROM users u
+INNER JOIN orders o ON u.user_id = o.user_id
+WHERE o.created_at >= '2024-01-01'
+    AND o.status = 'completed'
+GROUP BY u.user_id, u.email
+HAVING COUNT(DISTINCT o.order_id) > 5
+ORDER BY revenue DESC;
+
+-- ❌ Evitar: SELECT *, joins implícitos, sem filtros
+SELECT * 
+FROM users, orders 
+WHERE users.user_id = orders.user_id;
+```
+
+### CTEs para Legibilidade
+
+Preferir CTEs (Common Table Expressions) a subqueries aninhadas:
+
+```sql
+-- ✅ Bom: CTEs nomeadas e sequenciais
+WITH active_users AS (
+    SELECT user_id, email
+    FROM users
+    WHERE last_login >= CURRENT_DATE - INTERVAL '30 days'
+),
+user_orders AS (
+    SELECT 
+        user_id,
+        COUNT(*) as order_count,
+        SUM(total_amount) as total_spent
+    FROM orders
+    WHERE status = 'completed'
+    GROUP BY user_id
+)
+SELECT 
+    au.email,
+    COALESCE(uo.order_count, 0) as orders,
+    COALESCE(uo.total_spent, 0) as spent
+FROM active_users au
+LEFT JOIN user_orders uo ON au.user_id = uo.user_id;
+
+-- ❌ Evitar: subqueries aninhadas difíceis de ler
+SELECT email, 
+    (SELECT COUNT(*) FROM orders WHERE ...) as orders
+FROM users 
+WHERE user_id IN (SELECT user_id FROM ...);
+```
+
+### Segurança e Parametrização
+
+```python
+# ✅ Bom: parametrizado (psycopg2/asyncpg)
+cursor.execute(
+    "SELECT * FROM users WHERE email = %s AND status = %s",
+    (email, status)
+)
+
+# ❌ NUNCA: concatenação direta (SQL injection)
+cursor.execute(f"SELECT * FROM users WHERE email = '{email}'")
+```
+
+### Joins e Semântica
+
+- **INNER JOIN**: apenas registros com match em ambas as tabelas
+- **LEFT JOIN**: todos da esquerda + matches da direita (NULL quando sem match)
+- **RIGHT JOIN**: evitar (confunde leitura) - use LEFT JOIN invertido
+- **FULL OUTER JOIN**: raramente necessário - reavaliar modelo se precisar
+
+**Atenção com NULL**:
+```sql
+-- NULL != NULL (retorna NULL, não TRUE)
+WHERE column = NULL       -- ❌ Sempre falso
+WHERE column IS NULL      -- ✅ Correto
+
+-- Coalesce para valores padrão
+SELECT COALESCE(discount_rate, 0.0) as discount
+```
+
+---
+
+## PostgreSQL Específico
+
+### Modelagem e Tipos
+
+```sql
+-- ✅ Tipos apropriados
+CREATE TABLE orders (
+    order_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    total_amount NUMERIC(10, 2) NOT NULL,  -- dinheiro: NUMERIC, não FLOAT
+    status VARCHAR(20) NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- sempre TIMESTAMPTZ
+    metadata JSONB,  -- JSONB (indexável) > JSON
+    CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+-- ❌ Evitar
+CREATE TABLE orders (
+    order_id INT,  -- sem PK/default
+    total FLOAT,   -- impreciso para dinheiro
+    created_at TIMESTAMP,  -- sem timezone
+    data TEXT  -- JSON como texto
+);
+```
+
+### Constraints e Validações
+
+```sql
+-- Garantir integridade no banco, não só na aplicação
+CREATE TABLE products (
+    product_id UUID PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL CHECK (price >= 0),
+    stock INT NOT NULL DEFAULT 0 CHECK (stock >= 0),
+    category VARCHAR(50) NOT NULL,
+    CONSTRAINT unique_name_per_category UNIQUE (name, category)
+);
+```
+
+### Índices (quando justificado)
+
+```sql
+-- Índice em colunas frequentemente filtradas/ordenadas
+CREATE INDEX idx_orders_user_created 
+ON orders (user_id, created_at DESC);
+
+-- Índice parcial (apenas subset de dados)
+CREATE INDEX idx_active_users 
+ON users (email) 
+WHERE status = 'active';
+
+-- GIN para JSONB/arrays
+CREATE INDEX idx_metadata ON orders USING GIN (metadata);
+
+-- AVOID: over-indexing (degrada writes e consome espaço)
+```
+
+**Quando criar índices**:
+1. Colunas em WHERE/JOIN frequentes
+2. Colunas em ORDER BY de queries lentas
+3. Foreign keys sem índice (PostgreSQL não cria automático)
+4. Após medir com EXPLAIN ANALYZE
+
+### Operações em Massa
+
+```sql
+-- ✅ COPY para carga massiva (muito mais rápido que INSERT)
+COPY orders (user_id, total_amount, status)
+FROM '/path/to/data.csv'
+WITH (FORMAT csv, HEADER true);
+
+-- ✅ INSERT bulk (melhor que N inserts)
+INSERT INTO orders (user_id, total_amount, status)
+VALUES 
+    ('uuid1', 100.00, 'pending'),
+    ('uuid2', 200.00, 'pending'),
+    ...
+ON CONFLICT (order_id) DO NOTHING;
+```
+
+### Migrações
+
+- **Versionadas**: numeração sequencial (001_initial.sql, 002_add_users.sql)
+- **Idempotentes**: usar `IF NOT EXISTS`, `IF EXISTS`
+- **Rollback pensado**: sempre ter _down migration_ ou estratégia de reversão
+- **Ferramentas**: Alembic (Python), Flyway, Liquibase
+
+```sql
+-- ✅ Migração segura
+BEGIN;
+
+-- Adicionar coluna com valor padrão
+ALTER TABLE users ADD COLUMN last_login TIMESTAMPTZ;
+
+-- Popular dados existentes (se necessário)
+UPDATE users SET last_login = created_at WHERE last_login IS NULL;
+
+-- Tornar NOT NULL depois de popular
+ALTER TABLE users ALTER COLUMN last_login SET NOT NULL;
+
+COMMIT;
+```
+
+---
+
+## ETL - Extract, Transform, Load
+
+### Princípios
+
+1. **Idempotência obrigatória**: reprocessar mesma entrada = mesmo resultado (sem duplicação)
+2. **Processar em chunks**: não carregar datasets inteiros na memória
+3. **Fail fast**: validar schema/tipos cedo, antes de processar
+4. **Separação de etapas**: extração → validação → transformação → carga
+
+### Exemplo em Python
+
+```python
+from typing import Iterator
+import pandas as pd
+
+def extract_users(source_path: str, chunk_size: int = 10000) -> Iterator[pd.DataFrame]:
+    """Extract users in chunks to manage memory."""
+    for chunk in pd.read_csv(source_path, chunksize=chunk_size):
+        yield chunk
+
+def validate_chunk(df: pd.DataFrame) -> pd.DataFrame:
+    """Validate schema and required columns."""
+    required_cols = {"user_id", "email", "created_at"}
+    if not required_cols.issubset(df.columns):
+        raise ValueError(f"Missing columns: {required_cols - set(df.columns)}")
+    
+    # Validar tipos
+    df["created_at"] = pd.to_datetime(df["created_at"], errors="coerce")
+    if df["created_at"].isna().any():
+        raise ValueError("Invalid dates found in created_at")
+    
+    return df
+
+def transform_chunk(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply business transformations."""
+    df["email"] = df["email"].str.lower().str.strip()
+    df["email_domain"] = df["email"].str.split("@").str[1]
+    return df
+
+def load_chunk(df: pd.DataFrame, conn) -> None:
+    """Load data with upsert logic (idempotent)."""
+    df.to_sql(
+        "users_staging",
+        conn,
+        if_exists="append",
+        index=False,
+        method="multi"
+    )
+    
+    # Merge staging → produção (upsert)
+    conn.execute("""
+        INSERT INTO users (user_id, email, email_domain, created_at)
+        SELECT user_id, email, email_domain, created_at
+        FROM users_staging
+        ON CONFLICT (user_id) 
+        DO UPDATE SET 
+            email = EXCLUDED.email,
+            email_domain = EXCLUDED.email_domain,
+            updated_at = NOW()
+    """)
+
+def run_etl(source_path: str, db_conn) -> dict:
+    """Execute full ETL pipeline with metrics."""
+    metrics = {"read": 0, "validated": 0, "loaded": 0, "errors": 0}
+    
+    try:
+        for chunk in extract_users(source_path):
+            metrics["read"] += len(chunk)
+            
+            validated = validate_chunk(chunk)
+            metrics["validated"] += len(validated)
+            
+            transformed = transform_chunk(validated)
+            load_chunk(transformed, db_conn)
+            metrics["loaded"] += len(transformed)
+            
+    except Exception as e:
+        metrics["errors"] += 1
+        logger.error("etl_failed", error=str(e), metrics=metrics)
+        raise
+    
+    logger.info("etl_completed", metrics=metrics)
+    return metrics
+```
+
+### Métricas e Observabilidade
+
+Registrar sempre:
+- **Linhas lidas** (extract)
+- **Linhas válidas** (validate)
+- **Linhas inseridas/atualizadas** (load)
+- **Erros** (com detalhes acionáveis)
+- **Tempo por etapa** (identificar gargalos)
+
+```python
+import time
+import structlog
+
+logger = structlog.get_logger()
+
+def timed_stage(stage_name: str):
+    """Decorator para medir tempo de etapas."""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            start = time.time()
+            result = func(*args, **kwargs)
+            duration = time.time() - start
+            logger.info(f"{stage_name}_completed", duration_seconds=duration)
+            return result
+        return wrapper
+    return decorator
+
+@timed_stage("extract")
+def extract_users(...):
+    ...
+```
+
+### Estratégias de Carga
+
+**Full Load** (substituição completa):
+```sql
+BEGIN;
+TRUNCATE TABLE users_temp;
+COPY users_temp FROM ...;
+-- Validações
+DROP TABLE users;
+ALTER TABLE users_temp RENAME TO users;
+COMMIT;
+```
+
+**Incremental Load** (apenas novos/modificados):
+```python
+# Usar watermark (última data processada)
+last_processed = get_last_watermark()
+new_records = extract_since(last_processed)
+load_upsert(new_records)
+update_watermark(max(new_records["updated_at"]))
+```
+
+**Upsert** (insert ou update):
+```sql
+INSERT INTO users (...) VALUES (...)
+ON CONFLICT (user_id) 
+DO UPDATE SET column = EXCLUDED.column;
+```
+
+---
+
+## Performance e Otimização
+
+### Análise de Queries
+
+```sql
+-- Ver plano de execução
+EXPLAIN ANALYZE
+SELECT ...;
+
+-- Identificar scans sequenciais (Seq Scan) em tabelas grandes
+-- Considerar índices quando Seq Scan for gargalo
+```
+
+### Evitar N+1
+
+```python
+# ❌ N+1 queries
+users = get_all_users()  # 1 query
+for user in users:
+    orders = get_orders_by_user(user.id)  # N queries
+
+# ✅ Eager loading / join
+users_with_orders = get_users_with_orders()  # 1 query com JOIN
+```
+
+### Controle de Memória
+
+```python
+# ✅ Generator para grandes volumes
+def process_large_dataset(path: str) -> Iterator[Row]:
+    with open(path) as f:
+        for line in f:
+            yield parse_line(line)
+
+# ❌ Carregar tudo
+data = pd.read_csv(path)  # OOM se arquivo > memória
+```

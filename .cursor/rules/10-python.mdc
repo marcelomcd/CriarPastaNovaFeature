@@ -1,0 +1,212 @@
+---
+description: "Python - padrões, qualidade e boas práticas"
+alwaysApply: false
+---
+
+# Python
+
+## Versão e Tipagem
+
+- **Python 3.10+** (aproveitar structural pattern matching, union types melhorados)
+- **Type hints obrigatórios** em assinaturas públicas (funções, métodos, classes)
+- Compatível com **mypy strict mode** (--strict)
+- Preferir `from typing import Protocol` para contratos de interface
+
+```python
+# ✅ Bom
+def process_data(items: list[dict[str, Any]], threshold: float = 0.5) -> ProcessResult:
+    ...
+
+# ❌ Evitar
+def process_data(items, threshold=0.5):
+    ...
+```
+
+## Estruturas de Dados
+
+- **DTOs**: `pydantic.BaseModel` (validação automática, serialização)
+- **Domain Models**: `dataclasses` com `frozen=True` para imutabilidade
+- **Configs**: `pydantic-settings` para validação de variáveis de ambiente
+- **Enums**: `enum.Enum` ou `enum.StrEnum` (Python 3.11+)
+
+```python
+# DTO (API boundary)
+from pydantic import BaseModel, Field
+
+class CreateUserRequest(BaseModel):
+    email: str = Field(..., pattern=r"^[\w\.-]+@[\w\.-]+\.\w+$")
+    age: int = Field(..., ge=18, le=120)
+
+# Domain Model (imutável)
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class User:
+    id: str
+    email: str
+    age: int
+    
+    def is_adult(self) -> bool:
+        return self.age >= 18
+```
+
+## Tratamento de Erros
+
+- **Exceptions customizadas** para domínio (herdar de `Exception` ou `ValueError`/`TypeError`)
+- **Fail fast**: validar entrada no início da função
+- **Context managers** para gerenciar recursos (arquivos, conexões)
+- **Nunca** usar `except Exception: pass` sem logging/re-raise
+
+```python
+# ✅ Bom
+class InvalidUserDataError(ValueError):
+    """Raised when user data fails validation."""
+
+def create_user(data: dict) -> User:
+    if not data.get("email"):
+        raise InvalidUserDataError("Email is required")
+    # ... resto da lógica
+
+# ❌ Evitar
+def create_user(data):
+    try:
+        # ... código complexo
+    except Exception:
+        return None  # Silencia erro sem contexto
+```
+
+## Async/Await
+
+- Usar **asyncio** para I/O-bound (rede, banco de dados)
+- **Não misturar** sync e async sem necessidade (pode causar deadlocks)
+- Preferir `asyncio.gather()` para paralelismo de I/O
+- Sempre usar `async with` para recursos async (pools de conexão)
+
+```python
+import asyncio
+from typing import Sequence
+
+async def fetch_users(ids: Sequence[str]) -> list[User]:
+    async with get_db_pool() as pool:
+        tasks = [pool.fetch_user(id) for id in ids]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        return [r for r in results if not isinstance(r, Exception)]
+```
+
+## Performance
+
+- **Generators** para processar grandes volumes (`yield` ao invés de listas)
+- **List comprehensions** para transformações simples (mais rápido que `map`/`filter`)
+- **`__slots__`** em classes com muitas instâncias (economiza memória)
+- **Profiling** antes de otimizar (use `cProfile`, `line_profiler`, `memory_profiler`)
+
+```python
+# ✅ Memory-efficient
+def process_large_file(path: str) -> Iterator[ProcessedRow]:
+    with open(path) as f:
+        for line in f:
+            yield process_line(line)
+
+# ❌ Carrega tudo na memória
+def process_large_file(path: str) -> list[ProcessedRow]:
+    with open(path) as f:
+        return [process_line(line) for line in f]
+```
+
+## Logging
+
+- **Logging estruturado**: `structlog` ou `python-json-logger`
+- Níveis corretos: DEBUG (detalhes), INFO (eventos), WARNING (inesperado), ERROR (falha)
+- Incluir **contexto** (request_id, user_id, operação)
+- Nunca logar senhas, tokens, dados pessoais
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+def process_order(order_id: str, user_id: str) -> None:
+    log = logger.bind(order_id=order_id, user_id=user_id)
+    log.info("processing_order_started")
+    try:
+        # ... lógica
+        log.info("processing_order_completed")
+    except Exception as e:
+        log.error("processing_order_failed", error=str(e))
+        raise
+```
+
+## Testes
+
+- **pytest** como framework padrão
+- **Fixtures** para setup/teardown e dependências
+- **Parametrize** para testar múltiplos cenários
+- **Mocks** apenas para I/O externo (banco, APIs) - não mockar lógica de negócio
+- Cobertura focada em **casos de borda** e **cenários de falha**
+
+```python
+import pytest
+from unittest.mock import Mock
+
+@pytest.mark.parametrize("age,expected", [
+    (17, False),
+    (18, True),
+    (65, True),
+])
+def test_user_is_adult(age: int, expected: bool) -> None:
+    user = User(id="1", email="test@test.com", age=age)
+    assert user.is_adult() == expected
+
+@pytest.fixture
+def mock_db():
+    db = Mock()
+    db.get_user.return_value = User(id="1", email="test@test.com", age=25)
+    return db
+```
+
+## Padrões de Código
+
+- **Funções pequenas**: máximo 20-30 linhas (extrair lógica em funções auxiliares)
+- **Evitar estado global**: usar injeção de dependências
+- **Preferir composição**: funções puras que recebem e retornam dados
+- **Docstrings**: Google Style para funções públicas (parâmetros, retorno, raises)
+
+```python
+def calculate_discount(price: float, user: User) -> float:
+    """Calculate discount based on user tier.
+    
+    Args:
+        price: Original price in USD
+        user: User object with tier information
+        
+    Returns:
+        Final price after discount applied
+        
+    Raises:
+        ValueError: If price is negative
+    """
+    if price < 0:
+        raise ValueError("Price cannot be negative")
+    
+    discount_rate = _get_discount_rate(user.tier)
+    return price * (1 - discount_rate)
+```
+
+## Ferramentas de Qualidade
+
+- **Linting**: `ruff` (substitui flake8, isort, black)
+- **Type checking**: `mypy --strict`
+- **Security**: `bandit` para detecção de vulnerabilidades
+- **Dependencies**: `pip-audit` para CVEs conhecidas
+
+Configuração recomendada (`pyproject.toml`):
+```toml
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "N", "W", "UP", "B", "A", "C4", "DTZ", "PIE", "PT", "RET", "SIM"]
+
+[tool.mypy]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+```

@@ -1,0 +1,214 @@
+---
+description: "Progress/OpenEdge - extração, mapeamento e integração"
+alwaysApply: false
+---
+
+# Progress/OpenEdge
+
+## Contexto
+
+Progress/OpenEdge é sistema legado comum em ERPs. Integração típica: extração de dados para PostgreSQL/SQL Server via ODBC ou dump/export.
+
+## Tipos de Dados
+
+Mapear tipos Progress → destino com precisão:
+
+| Progress Type | PostgreSQL | SQL Server | Python |
+|--------------|------------|------------|---------|
+| CHARACTER    | VARCHAR/TEXT | VARCHAR/NVARCHAR | str |
+| INTEGER      | INTEGER | INT | int |
+| INT64        | BIGINT | BIGINT | int |
+| DECIMAL(p,s) | NUMERIC(p,s) | DECIMAL(p,s) | Decimal |
+| LOGICAL      | BOOLEAN | BIT | bool |
+| DATE         | DATE | DATE | datetime.date |
+| DATETIME     | TIMESTAMP | DATETIME2 | datetime.datetime |
+| DATETIME-TZ  | TIMESTAMPTZ | DATETIMEOFFSET | datetime (timezone-aware) |
+
+**Atenção**:
+- Progress `CHARACTER` pode ter **encoding específico** (ISO-8859-1, CP1252) - sempre validar
+- Progress `DECIMAL` sem precisão definida → definir explicitamente no destino
+- `LOGICAL` pode vir como `yes/no`, `true/false`, `1/0` dependendo do driver
+
+## Extração de Dados
+
+### Estratégias
+
+**1. ODBC/JDBC** (online, transacional):
+```python
+import pyodbc
+
+conn_str = (
+    "DRIVER={Progress OpenEdge 11.7 Driver};"
+    "HOST=progress-server;PORT=20931;DB=mydb;"
+    "UID=username;PWD=password"
+)
+conn = pyodbc.connect(conn_str)
+
+# Evitar SELECT * sem WHERE (tabelas podem ter milhões de registros)
+query = """
+    SELECT customer_id, name, email, created_date
+    FROM pub.customer
+    WHERE created_date >= ?
+"""
+cursor = conn.execute(query, last_extracted_date)
+```
+
+**2. Dump/Export** (offline, bulk):
+```bash
+# Progress DataServer export para CSV
+_proutil mydb -C dump customer /path/to/customer.d
+
+# Depois processar com pandas/dask
+import pandas as pd
+df = pd.read_csv("customer.d", delimiter="\t", encoding="iso-8859-1")
+```
+
+### Incremental vs Full Load
+
+**Incremental** (preferível para tabelas grandes):
+- Usar coluna de controle: `created_date`, `modified_date`, `seq_num`
+- Guardar watermark da última extração
+- Filtrar apenas registros novos/modificados
+
+```python
+# Recuperar último processamento
+last_run = get_last_watermark("customer")
+
+# Extrair apenas novos
+df = extract_progress_table(
+    table="pub.customer",
+    filter_column="modified_date",
+    filter_value=last_run
+)
+
+# Atualizar watermark
+update_watermark("customer", df["modified_date"].max())
+```
+
+**Full Load** (quando incremental não é viável):
+- Truncar tabela destino antes de carregar
+- Usar transação para garantir atomicidade
+- Considerar impacto em relatórios/dashboards
+
+## Encoding e Colação
+
+Progress pode usar encodings legados. Validar ao extrair strings:
+
+```python
+# Detectar encoding real
+import chardet
+
+with open("export.d", "rb") as f:
+    result = chardet.detect(f.read(10000))
+    encoding = result["encoding"]  # ex: 'ISO-8859-1'
+
+# Ler com encoding correto
+df = pd.read_csv("export.d", encoding=encoding)
+
+# Normalizar para UTF-8 no destino
+df["name"] = df["name"].str.encode("utf-8", errors="ignore").str.decode("utf-8")
+```
+
+## Chaves e Estratégias de Upsert
+
+Progress nem sempre tem PKs formais. Identificar **chaves naturais**:
+
+```python
+# Exemplo: customer_id é único (chave natural)
+df_progress = extract_customer_data()
+
+# Upsert no PostgreSQL
+from sqlalchemy import create_engine
+engine = create_engine("postgresql://...")
+
+# Staging table
+df_progress.to_sql("customer_staging", engine, if_exists="replace", index=False)
+
+# Merge staging → produção
+engine.execute("""
+    INSERT INTO customer (customer_id, name, email, modified_date)
+    SELECT customer_id, name, email, modified_date
+    FROM customer_staging
+    ON CONFLICT (customer_id) 
+    DO UPDATE SET
+        name = EXCLUDED.name,
+        email = EXCLUDED.email,
+        modified_date = EXCLUDED.modified_date
+""")
+```
+
+## Performance
+
+### Otimizações
+
+1. **Evitar SELECT * sem filtros**: tabelas Progress podem ter milhões de linhas
+2. **Processar em chunks**: não carregar tabela inteira na memória
+3. **Paralelizar extrações**: se houver múltiplas tabelas independentes
+4. **COPY em massa**: se destino é PostgreSQL, usar COPY ao invés de INSERTs
+
+```python
+# ✅ Processar em chunks
+chunk_size = 50000
+for offset in range(0, total_rows, chunk_size):
+    query = f"""
+        SELECT * FROM pub.customer
+        WHERE ROWNUM > {offset} AND ROWNUM <= {offset + chunk_size}
+    """
+    chunk = pd.read_sql(query, conn)
+    load_to_postgres(chunk)
+```
+
+### Indexes no Progress
+
+Se consultas no Progress estiverem lentas, verificar se há índices:
+
+```sql
+-- Listar índices de uma tabela (Progress SQL)
+SELECT * FROM SYSPROGRESS.SYSINDEXES WHERE tbl = 'customer';
+```
+
+Se não houver índice em colunas filtradas (ex: `modified_date`), sugerir criação ao DBA Progress.
+
+## Logs e Monitoramento
+
+Registrar métricas de extração:
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+def extract_progress_table(table: str, ...) -> pd.DataFrame:
+    log = logger.bind(table=table)
+    start_time = time.time()
+    
+    try:
+        df = pd.read_sql(query, conn)
+        duration = time.time() - start_time
+        
+        log.info(
+            "extraction_completed",
+            rows_extracted=len(df),
+            duration_seconds=duration
+        )
+        return df
+        
+    except Exception as e:
+        log.error("extraction_failed", error=str(e))
+        raise
+```
+
+## Checklist de Integração
+
+Ao integrar tabela Progress → destino:
+
+- [ ] Mapeamento de tipos validado
+- [ ] Encoding/colação tratado
+- [ ] Chave natural identificada
+- [ ] Estratégia incremental vs full definida
+- [ ] Watermark implementado (se incremental)
+- [ ] Upsert lógico testado (sem duplicação)
+- [ ] Performance aceitável (tempo de extração)
+- [ ] Logs e métricas implementados
+- [ ] Validação de dados críticos (NOT NULL, ranges)
+- [ ] Rollback strategy definida
