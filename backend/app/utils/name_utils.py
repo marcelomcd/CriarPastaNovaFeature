@@ -5,6 +5,9 @@ from typing import Optional
 # Caracteres inválidos em nomes de pasta (Windows/SharePoint)
 INVALID_FOLDER_CHARS = re.compile(r'[\\/:*?"<>|]')
 
+# Para nomes de arquivo (anexos): remove caracteres perigosos para filesystem
+INVALID_FILE_CHARS = re.compile(r'[\\/:*?"<>|\x00]')
+
 # Tamanho máximo típico para nome de pasta (SharePoint/OneDrive)
 MAX_FOLDER_NAME_LENGTH = 255
 
@@ -55,6 +58,27 @@ def sanitize_folder_name(title: str, max_length: Optional[int] = None) -> str:
     if len(s) > max_len:
         s = s[: max_len - 3].rstrip() + "..."
     return s.strip()
+
+
+def sanitize_attachment_filename(name: str, max_length: int = 200) -> str:
+    """
+    Sanitiza o nome de um anexo para uso como nome de arquivo no disco/SharePoint.
+    Remove path e caracteres inválidos; preserva a extensão.
+    """
+    if not name or not str(name).strip():
+        return "attachment"
+    s = str(name).strip()
+    # Remove path (só o nome do arquivo)
+    s = s.split("\\")[-1].split("/")[-1]
+    s = INVALID_FILE_CHARS.sub("_", s)
+    s = " ".join(s.split())
+    if len(s) > max_length:
+        ext = ""
+        if "." in s:
+            s, ext = s.rsplit(".", 1)
+            ext = "." + ext
+        s = s[: max_length - len(ext) - 1].rstrip("._") + ext
+    return s.strip() or "attachment"
 
 
 def build_feature_folder_name(
