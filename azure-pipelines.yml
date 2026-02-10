@@ -58,7 +58,7 @@ steps:
   - task: Cache@2
     displayName: "Restaurar cache da última execução (last_run)"
     inputs:
-      key: "pipeline-lastrun-$(Build.SourceBranch)"
+      key: "pipeline-lastrun-$(Build.SourceBranchName)"
       path: backend/logs
 
   - script: |

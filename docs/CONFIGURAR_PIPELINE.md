@@ -22,7 +22,7 @@ Configure estas variáveis em **Pipelines** → sua pipeline → **Edit** → **
 **Variáveis opcionais (não obrigatórias para a 1ª execução):**
 
 - **`LOG_LEVEL`** — O YAML já define `INFO`; só crie essa variável se quiser outro nível (ex.: `DEBUG`).
-- **`PIPELINE_FULL_SCAN`** — Na **primeira** execução não é preciso: como ainda não existe cache, a varredura já é **completa**. Use `1` ou `true` só se quiser forçar varredura completa em execuções seguintes (ex.: reparo).
+- **`PIPELINE_FULL_SCAN`** — Na **primeira** execução não é preciso: como ainda não existe cache, a varredura já é **completa**. Use `1` ou `true` se a primeira execução foi **cancelada** ou **falhou** antes do fim (assim a próxima run faz varredura completa de novo) ou para forçar varredura completa em execuções seguintes (ex.: reparo).
 
 ---
 
