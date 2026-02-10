@@ -14,7 +14,7 @@
 
 *Tempo real (webhooks) e varredura agendada*
 
-[Visão Geral](#-visão-geral) • [Instalação](#-instalação-rápida) • [Configuração](#-configuração) • [Testes](#-testes) • [API](#-api-endpoints)
+[Visão Geral](#visao-geral) • [Instalação](#instalacao-rapida) • [Configuração](#configuracao) • [Testes](#testes) • [API](#api-endpoints)
 
 </div>
 
@@ -22,26 +22,26 @@
 
 ## Índice
 
-- [Visão Geral](#-visão-geral)
-- [Funcionalidades](#-funcionalidades)
-- [Estrutura de pastas no SharePoint](#-estrutura-de-pastas-no-sharepoint)
-- [Arquitetura](#-arquitetura)
-- [Tecnologias](#-tecnologias)
-- [Pré-requisitos](#-pré-requisitos)
-- [Instalação Rápida](#-instalação-rápida)
-- [Configuração](#-configuração)
-- [Uso](#-uso)
-- [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Testes](#-testes)
-- [API Endpoints](#-api-endpoints)
-- [Pipeline e Service Hooks](#-pipeline-e-service-hooks)
-- [Solução de Problemas](#-solução-de-problemas)
-- [Referências](#-referências)
-- [Licença](#-licença)
+- [Visão Geral](#visao-geral)
+- [Funcionalidades](#funcionalidades)
+- [Estrutura de pastas no SharePoint](#estrutura-de-pastas-no-sharepoint)
+- [Arquitetura](#arquitetura)
+- [Tecnologias](#tecnologias)
+- [Pré-requisitos](#pre-requisitos)
+- [Instalação Rápida](#instalacao-rapida)
+- [Configuração](#configuracao)
+- [Uso](#uso)
+- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Testes](#testes)
+- [API Endpoints](#api-endpoints)
+- [Pipeline e Service Hooks](#pipeline-e-service-hooks)
+- [Solução de Problemas](#solucao-de-problemas)
+- [Referências](#referencias)
+- [Licença](#licenca)
 
 ---
 
-<a id="visão-geral"></a>
+<a id="visao-geral"></a>
 ## Visão Geral
 
 O **FluxoNovasFeatures** integra **Azure DevOps** e **SharePoint**: a cada nova Feature (ou atualização com anexos), o sistema cria a estrutura de pastas no SharePoint, preenche o campo customizado `Custom.LinkPastaDocumentacao` no work item e sincroniza os anexos da Feature para a pasta.
@@ -83,7 +83,7 @@ O **FluxoNovasFeatures** integra **Azure DevOps** e **SharePoint**: a cada nova 
 
 ---
 
-<a id="estrutura-de-pastas"></a>
+<a id="estrutura-de-pastas-no-sharepoint"></a>
 ## Estrutura de pastas no SharePoint
 
 ```
@@ -111,8 +111,8 @@ O **FluxoNovasFeatures** integra **Azure DevOps** e **SharePoint**: a cada nova 
 ├─────────────────────────────────────────────────────────────┤
 │  AzureDevOpsClient          │  SharePointFileService        │
 │  • list_features, get_wi    │  • ensure_folder_path         │
-│  • update_work_item_link    │  • create_sharing_link        │
-│  • list_attachment_relations│  • upload_file                │
+│  • update_work_item_link    │  • create_sharing_link         │
+│  • list_attachment_relations│  • upload_file                 │
 │  • download_attachment      │  (auth: SharePointAuthService)│
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -132,7 +132,7 @@ O **FluxoNovasFeatures** integra **Azure DevOps** e **SharePoint**: a cada nova 
 
 ---
 
-<a id="pré-requisitos"></a>
+<a id="pre-requisitos"></a>
 ## Pré-requisitos
 
 - **Python 3.10+**
@@ -142,7 +142,7 @@ O **FluxoNovasFeatures** integra **Azure DevOps** e **SharePoint**: a cada nova 
 
 ---
 
-<a id="instalação-rápida"></a>
+<a id="instalacao-rapida"></a>
 ## Instalação Rápida
 
 ### 1. Clone o repositório
@@ -164,7 +164,7 @@ pip install -r requirements.txt
 
 ### 3. Configuração
 
-Copie `backend/.env.example` para `backend/.env` e preencha as variáveis (ver [Configuração](#-configuração)).
+Copie `backend/.env.example` para `backend/.env` e preencha as variáveis (ver [Configuração](#configuracao)).
 
 ### 4. Executar a API
 
@@ -178,7 +178,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 ---
 
-<a id="configuração"></a>
+<a id="configuracao"></a>
 ## Configuração
 
 Crie o arquivo `backend/.env` (nunca commite; está no `.gitignore`). Use como base o `backend/.env.example`.
@@ -197,7 +197,7 @@ Crie o arquivo `backend/.env` (nunca commite; está no `.gitignore`). Use como b
 | `SHAREPOINT_FOLDER_PATH_BASE` | Caminho base da biblioteca | Não |
 | `WEBHOOK_SECRET` | Secret para validar Service Hooks | Sim (recomendado) |
 
-Detalhes e uso em pipeline: [docs/PIPELINE_VARIABLES_AZURE_DEVOPS.md](docs/PIPELINE_VARIABLES_AZURE_DEVOPS.md).
+Detalhes e uso em pipeline: [docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md).
 
 ### Azure DevOps PAT
 
@@ -242,6 +242,8 @@ Lista todas as Features (Area Path configurado), garante pasta + link + anexos p
 2. Em **Variables**, defina as variáveis (secretas quando indicado)
 3. Agendamento (ex.: 10:00 UTC) e/ou disparo manual
 
+Guia completo: [docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md).
+
 ---
 
 <a id="estrutura-do-projeto"></a>
@@ -262,7 +264,7 @@ Qualiit.FluxoNovasFeatures/
 │   ├── .env.example
 │   └── pytest.ini
 ├── docs/
-│   └── PIPELINE_VARIABLES_AZURE_DEVOPS.md
+│   └── CONFIGURAR_PIPELINE.md      # Variáveis e execução manual da pipeline
 ├── azure-pipelines.yml             # Pipeline de varredura
 ├── README.md
 └── README_DE_EXEMPLO.md
@@ -318,23 +320,12 @@ python -m pytest tests/ -v
 <a id="pipeline-e-service-hooks"></a>
 ## Pipeline e Service Hooks
 
-### Pipeline de varredura
-
-- Arquivo: `azure-pipelines.yml`
-- Variáveis: ver [docs/PIPELINE_VARIABLES_AZURE_DEVOPS.md](docs/PIPELINE_VARIABLES_AZURE_DEVOPS.md)
-- Execução: agendada (ex.: diária) e/ou manual
-
-### Service Hooks (tempo real)
-
-1. Azure DevOps → **Project Settings** → **Service hooks** → **Create subscription**
-2. Evento: **Work item created** e/ou **Work item updated**
-3. Filtros: Work Item Type = Feature, Area Path do projeto
-4. Ação: **Webhook**, URL = `https://<sua-api>/webhook/devops`
-5. Header: `X-Webhook-Secret` = valor de `WEBHOOK_SECRET`
+- **Pipeline**: arquivo `azure-pipelines.yml`; variáveis e execução manual em [docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md). Execução agendada (ex.: 10:00 UTC) e disparo manual.
+- **Service Hooks (tempo real)**: **Project Settings** → **Service hooks** → **Create subscription** — eventos **Work item created** e **Work item updated**, URL `https://<sua-api>/webhook/devops`, header `X-Webhook-Secret` = valor de `WEBHOOK_SECRET`.
 
 ---
 
-<a id="soluçao-de-problemas"></a>
+<a id="solucao-de-problemas"></a>
 ## Solução de Problemas
 
 ### Erro de autenticação Azure DevOps
@@ -357,7 +348,7 @@ python -m pytest tests/ -v
 
 ---
 
-<a id="referências"></a>
+<a id="referencias"></a>
 ## Referências
 
 - [Azure DevOps - Attachments](https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/attachments/get?view=azure-devops-rest-7.1)
@@ -366,7 +357,7 @@ python -m pytest tests/ -v
 
 ---
 
-<a id="licença"></a>
+<a id="licenca"></a>
 ## Licença
 
 Este projeto é **proprietário** da **Quali IT - Inovação e Tecnologia**. Todos os direitos reservados.
@@ -376,5 +367,13 @@ Este projeto é **proprietário** da **Quali IT - Inovação e Tecnologia**. Tod
 <div align="center">
 
 **Repositório**: [Qualiit.FluxoNovasFeatures](https://dev.azure.com/qualiit/ALM/_git/Qualiit.FluxoNovasFeatures)
+
+---
+
+**Última atualização**: 10/02/2026  
+**Versão**: 1.0.0  
+**Backend**: Python / FastAPI  
+**Desenvolvido por**: Marcelo Macedo  
+**E-mail**: [marcelo.macedo@qualiit.com.br](mailto:marcelo.macedo@qualiit.com.br)
 
 </div>

@@ -18,6 +18,7 @@ pool:
 
 variables:
   PYTHON_VERSION: "3.10"
+  LOG_LEVEL: "INFO"
 
 steps:
   - checkout: self

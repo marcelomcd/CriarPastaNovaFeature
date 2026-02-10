@@ -84,20 +84,23 @@ class AzureDevOpsClient:
         return self.get_work_items_by_ids(ids)
 
     def get_work_items_by_ids(self, ids: list[str]) -> list[WorkItemResponse]:
-        """Obtém Work Items por IDs (com $expand=all para relations/anexos)."""
+        """Obtém Work Items por IDs (com $expand=all para relations/anexos). Faz batch de 200 por request (limite da API)."""
         if not ids:
             return []
-        r = self._make_request("GET", "wit/workitems", params={"ids": ",".join(ids), "$expand": "all"})
-        data = r.json()
         out = []
-        for item in data.get("value", []):
-            out.append(WorkItemResponse(
-                id=item["id"],
-                rev=item["rev"],
-                fields=item.get("fields", {}),
-                relations=item.get("relations"),
-                url=item.get("url", ""),
-            ))
+        batch_size = 200
+        for i in range(0, len(ids), batch_size):
+            batch = ids[i : i + batch_size]
+            r = self._make_request("GET", "wit/workitems", params={"ids": ",".join(batch), "$expand": "all"})
+            data = r.json()
+            for item in data.get("value", []):
+                out.append(WorkItemResponse(
+                    id=item["id"],
+                    rev=item["rev"],
+                    fields=item.get("fields", {}),
+                    relations=item.get("relations"),
+                    url=item.get("url", ""),
+                ))
         return out
 
     def get_work_item_by_id(self, work_item_id: int) -> WorkItemResponse | None:
