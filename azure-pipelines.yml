@@ -1,12 +1,18 @@
 # Pipeline de varredura: pastas SharePoint por Feature (FluxoNovasFeatures)
-# Gatilhos: SOMENTE execução manual na 1ª vez; depois configure Service Hooks para
-#   "Work item created" e "Work item updated" apontando para a API (webhook) para
-#   novas Features e anexos adicionados/atualizados.
+# Sincroniza: novas Features, anexos adicionados/atualizados, Features encerradas.
+# Agendamento: diário às 5:00 (horário de Brasília); varredura incremental (só o que mudou desde a última execução).
 # Variáveis: AZURE_DEVOPS_PAT, SHAREPOINT_*, AZURE_DEVOPS_ORG, AZURE_DEVOPS_PROJECT (ver docs)
 
 trigger: none
-# Sem schedules: após a primeira execução manual, use Service Hooks (Project Settings)
-# para disparar a API nos eventos "Work item created" e "Work item updated".
+
+schedules:
+  - cron: "0 8 * * *"   # 08:00 UTC = 5:00 BRT (horário de Brasília)
+    displayName: Sincronização diária - novas Features, anexos e Closed
+    branches:
+      include:
+        - main
+        - master
+    always: true
 
 pool:
   vmImage: "ubuntu-latest"

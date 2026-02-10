@@ -19,7 +19,10 @@ Configure estas variáveis em **Pipelines** → sua pipeline → **Edit** → **
 | `SHAREPOINT_SITE_URL` | URL do site SharePoint (ex.: https://qualiitcombr.sharepoint.com/sites/projetosqualiit) | Não |
 | `SHAREPOINT_FOLDER_PATH_BASE` | Caminho base da biblioteca (ex.: Documentos Compartilhados/Projetos DevOps) | Não |
 
-Opcionais: `LOG_LEVEL` = `INFO`; `PIPELINE_FULL_SCAN` = `1` ou `true` para forçar **varredura completa** (use na 1ª execução manual ou para reparo; se não definir, após a primeira execução a pipeline faz só **varredura incremental** — novas Features ou alterações em anexos).
+**Variáveis opcionais (não obrigatórias para a 1ª execução):**
+
+- **`LOG_LEVEL`** — O YAML já define `INFO`; só crie essa variável se quiser outro nível (ex.: `DEBUG`).
+- **`PIPELINE_FULL_SCAN`** — Na **primeira** execução não é preciso: como ainda não existe cache, a varredura já é **completa**. Use `1` ou `true` só se quiser forçar varredura completa em execuções seguintes (ex.: reparo).
 
 ---
 
@@ -45,17 +48,19 @@ Opcionais: `LOG_LEVEL` = `INFO`; `PIPELINE_FULL_SCAN` = `1` ou `true` para forç
 2. O passo **"Executar varredura (pastas + link + anexos)"** processa as Features (Area Path: Quali IT ! Gestao de Projetos): na **primeira execução** (ou com `PIPELINE_FULL_SCAN=1`) processa todas; nas **execuções seguintes** processa apenas Features **novas ou alteradas** (ex.: novo anexo), graças ao cache da data da última execução.
 3. Ao final, o artefato **logs** pode ser baixado (pasta `backend/logs`). O log da execução é um arquivo **HTML** (`pipeline_YYYYMMDD_HHMMSS.html`) para leitura fácil no navegador.
 
-Com isso, o SharePoint fica organizado: Features **encerradas** em **Ano/Closed/Cliente/Feature**; as demais em **Ano/Cliente/Feature**. Não há pastas nem anexos duplicados. Para rodar de novo, execute a pipeline manualmente ou use os Service Hooks após a primeira execução.
+Com isso, o SharePoint fica organizado: Features **encerradas** em **Ano/Closed/Cliente/Feature**; as demais em **Ano/Cliente/Feature**. Não há pastas nem anexos duplicados.
 
 ---
 
-## Gatilhos: somente após a primeira execução manual
+## Agendamento diário (5:00 da manhã)
 
-- **Primeira execução:** rode a pipeline **manualmente** (Run pipeline). Não há agendamento (cron) nem trigger em push.
-- **Depois da primeira execução:** desbloqueie os gatilhos configurando **Service Hooks** no Azure DevOps:
-  - **Project Settings** → **Service hooks** → **Create subscription**
-  - Eventos: **Work item created** e **Work item updated** (novas Features e anexos adicionados/atualizados).
-  - URL: `https://<sua-api>/webhook/devops` (API FastAPI publicada).
-  - Header: `X-Webhook-Secret` = valor de `WEBHOOK_SECRET`.
+A pipeline está configurada para rodar **todo dia às 5:00 (horário de Brasília)**, sincronizando o que foi feito no dia anterior. Ela **não varre** toda a estrutura do Azure DevOps nem do SharePoint: usa varredura **incremental**, processando apenas:
 
-Assim, apenas **novas Features criadas** e **anexos adicionados/atualizados** disparam processamento (via API); a pipeline em YAML continua sendo executada só manualmente quando quiser refazer varredura completa.
+- **Novas Features** (criação)
+- **Features com anexos adicionados ou atualizados**
+- **Features encerradas** (movidas para a pasta Closed)
+
+A consulta usa a data da última execução (`last_run`): só são buscadas Features cuja revisão (System.ChangedDate) seja posterior a essa data.
+
+- **Primeira execução:** rode **manualmente** (Run pipeline); não há cache ainda, então a varredura é completa.
+- **Execuções seguintes:** às 5:00 da manhã a pipeline roda sozinha e processa só o que mudou (novas Features, anexos, Closed).
