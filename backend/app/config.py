@@ -61,6 +61,15 @@ class Settings(BaseSettings):
         default="Projetos DevOps",
         description="Pasta base dentro da biblioteca (ex.: Projetos DevOps). A API já usa a biblioteca Documentações de Projetos como raiz; não inclua o nome da biblioteca para evitar pasta duplicada.",
     )
+    # Script de consolidação (local): caminhos ou URLs das pastas de origem, separados por ;
+    SHAREPOINT_SOURCE_FOLDER_PATHS: str = Field(
+        default="",
+        description="Caminhos na biblioteca separados por ; (ex.: Documentação dos Clientes;Projetos DevOps OLD). Lido do .env ao rodar pipeline_consolidate_sharepoint.py.",
+    )
+    SHAREPOINT_SOURCE_FOLDER_URLS: str = Field(
+        default="",
+        description="URLs de compartilhamento das pastas de origem, separadas por ;. Alternativa a SHAREPOINT_SOURCE_FOLDER_PATHS.",
+    )
 
     # Webhook (Service Hooks Azure DevOps → FastAPI)
     WEBHOOK_SECRET: str = Field(

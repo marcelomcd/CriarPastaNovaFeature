@@ -12,7 +12,7 @@
 
 **Criação automática de pastas no SharePoint por Feature, preenchimento de `Custom.LinkPastaDocumentacao` e sincronização de anexos**
 
-*Tempo real (webhooks), varredura agendada e pipeline de consolidação de pastas*
+*Tempo real (webhooks) e varredura semanal (pipeline no Azure Repos)*
 
 [Visão Geral](#visao-geral) • [Instalação](#instalacao-rapida) • [Configuração](#configuracao) • [Pipelines](#pipeline-e-service-hooks) • [Testes](#testes) • [API](#api-endpoints)
 
@@ -49,9 +49,7 @@ O **FluxoNovasFeatures** integra **Azure DevOps** e **SharePoint**: a cada nova 
 ### Características principais
 
 - **Tempo real**: Service Hooks do Azure DevOps disparam a API ao criar/atualizar work items (Feature).
-- **Duas pipelines no Azure DevOps:**
-  - **Principal** (`azure-pipelines.yml`): varredura de Features, criação de pastas no SharePoint, link no work item e sincronização de anexos (agendada diariamente ou sob demanda).
-  - **Consolidar** (`azure-pipelines-consolidate.yml`): unificação de documentos de várias pastas de origem para a pasta **Projetos DevOps**, mantendo a estrutura Ano > Cliente > Feature.
+- **Pipeline no Azure Repos** (`azure-pipelines.yml`): varredura de Features, criação de pastas no SharePoint, link no work item e sincronização de anexos. Agendada **semanalmente** (domingos 5:00 BRT); após a varredura completa inicial, processa só novas Features, novos anexos e movimentação para Closed.
 - **Estrutura padronizada**: `{Base}/{Ano}/{Cliente}/{FeatureId} - {NumeroProposta} - {Título}`.
 - **Segurança**: autenticação Microsoft Entra ID (MSAL) para SharePoint; PAT para Azure DevOps; validação de secret no webhook.
 
@@ -199,7 +197,7 @@ Crie o arquivo `backend/.env` (nunca commite; está no `.gitignore`). Use como b
 | `SHAREPOINT_FOLDER_PATH_BASE` | Pasta base: **Projetos DevOps** (não incluir nome da biblioteca) | Não |
 | `WEBHOOK_SECRET` | Secret para validar Service Hooks | Sim (recomendado) |
 
-Para a **Pipeline Consolidar**, além das variáveis SharePoint acima, defina `SHAREPOINT_SOURCE_FOLDER_PATHS` (ou `SHAREPOINT_SOURCE_FOLDER_URLS`). Ver **`backend/.env.example`** e **[docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md)** para instruções completas de configuração das duas pipelines.
+Ver **`backend/.env.example`** e **[docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md)** para instruções completas de configuração da pipeline.
 
 ### Azure DevOps PAT
 
@@ -238,12 +236,11 @@ python pipeline_feature_folders.py
 
 Lista todas as Features (Area Path configurado), garante pasta + link + anexos para cada uma.
 
-### Pipelines no Azure DevOps
+### Pipeline no Azure DevOps
 
-- **Pipeline principal** (`azure-pipelines.yml`): varredura de Features, pastas no SharePoint, link e anexos. Agendamento diário (5:00 BRT) e/ou disparo manual.
-- **Pipeline Consolidar** (`azure-pipelines-consolidate.yml`): une documentos de várias pastas de origem em **Projetos DevOps**.
+- **Pipeline** (`azure-pipelines.yml`): varredura de Features, pastas no SharePoint, link e anexos. Agendamento **semanal** (domingos 5:00 BRT) e/ou disparo manual.
 
-**Instruções completas** (criar pipelines, variáveis, executar): **[docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md)**. Detalhes da Consolidar e estrutura de pastas: [docs/PIPELINES_RETRY_E_CONSOLIDAR.md](docs/PIPELINES_RETRY_E_CONSOLIDAR.md).
+**Instruções completas** (criar pipeline, variáveis, executar): **[docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md)**. Estrutura de pastas: [docs/PIPELINES_RETRY_E_CONSOLIDAR.md](docs/PIPELINES_RETRY_E_CONSOLIDAR.md).
 
 ---
 
@@ -265,10 +262,9 @@ Qualiit.FluxoNovasFeatures/
 │   ├── .env.example
 │   └── pytest.ini
 ├── docs/
-│   ├── CONFIGURAR_PIPELINE.md      # Instruções para configurar as duas pipelines
-│   └── PIPELINES_RETRY_E_CONSOLIDAR.md  # Consolidar SharePoint e estrutura de pastas
-├── azure-pipelines.yml             # Pipeline principal (varredura)
-├── azure-pipelines-consolidate.yml # Pipeline Consolidar (unificar pastas)
+│   ├── CONFIGURAR_PIPELINE.md      # Instruções para configurar a pipeline
+│   └── PIPELINES_RETRY_E_CONSOLIDAR.md  # Estrutura de pastas e retry/erros
+├── azure-pipelines.yml             # Pipeline (varredura semanal)
 ├── README.md
 └── README_DE_EXEMPLO.md
 ```
@@ -323,9 +319,7 @@ python -m pytest tests/ -v
 <a id="pipeline-e-service-hooks"></a>
 ## Pipeline e Service Hooks
 
-- **Pipelines**: há duas pipelines YAML no repositório. **Instruções passo a passo** (criar, variáveis, executar) em **[docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md)**.
-  - **Principal** (`azure-pipelines.yml`): varredura de Features, pastas SharePoint, link e anexos; agendamento diário (5:00 BRT) e disparo manual.
-  - **Consolidar** (`azure-pipelines-consolidate.yml`): unificação de pastas de origem em Projetos DevOps; ver [PIPELINES_RETRY_E_CONSOLIDAR.md](docs/PIPELINES_RETRY_E_CONSOLIDAR.md).
+- **Pipeline**: **Instruções passo a passo** (criar, variáveis, executar) em **[docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md)**. Agendamento semanal (domingos 5:00 BRT) e disparo manual. Estrutura de pastas e retry: [PIPELINES_RETRY_E_CONSOLIDAR.md](docs/PIPELINES_RETRY_E_CONSOLIDAR.md).
 - **Service Hooks (tempo real)**: **Project Settings** → **Service hooks** → **Create subscription** — eventos **Work item created** e **Work item updated**, URL `https://<sua-api>/webhook/devops`, header `X-Webhook-Secret` = valor de `WEBHOOK_SECRET`.
 
 ---

@@ -1,19 +1,12 @@
-# Instruções para configurar as Pipelines
+# Instruções para configurar a Pipeline (FluxoNovasFeatures)
 
-Este documento descreve como configurar as **duas pipelines** no Azure DevOps. Use os **mesmos nomes e valores** do arquivo `backend/.env` (ou do modelo `backend/.env.example`) ao criar as variáveis em **Pipelines → Variables**. Nunca commite o `.env`.
-
-- **Pipeline principal** (`azure-pipelines.yml`): varredura de Features, criação de pastas no SharePoint, link no work item e sincronização de anexos.
-- **Pipeline Consolidar** (`azure-pipelines-consolidate.yml`): unificação de documentos de várias pastas de origem para a pasta **Projetos DevOps**.
-
-Detalhes da pipeline Consolidar e estrutura de pastas: [PIPELINES_RETRY_E_CONSOLIDAR.md](PIPELINES_RETRY_E_CONSOLIDAR.md).
+Há **apenas uma pipeline** no Azure Repos: a **pipeline principal** (`azure-pipelines.yml`), que faz a varredura de Features, criação de pastas no SharePoint, link no work item e sincronização de anexos. Use os **mesmos nomes e valores** do arquivo `backend/.env` (ou do modelo `backend/.env.example`) ao criar as variáveis em **Pipelines → Variables**. Nunca commite o `.env`.
 
 ---
 
 ## 1. Referência de variáveis
 
-O arquivo **`backend/.env.example`** contém todas as variáveis necessárias para as duas pipelines. Copie para `backend/.env`, preencha os valores e use os **mesmos nomes** ao configurar no Azure DevOps (em cada pipeline, **Variables** → **+ New variable**). Para as marcadas como **Secreto**, marque **Keep this value secret**.
-
-### Pipeline principal (obrigatórias)
+O arquivo **`backend/.env.example`** contém as variáveis da pipeline principal. Copie para `backend/.env`, preencha os valores e use os **mesmos nomes** no Azure DevOps (**Variables** → **+ New variable**). Para as marcadas como **Secreto**, marque **Keep this value secret**.
 
 | Nome | Descrição | Secreto? |
 |------|-----------|----------|
@@ -26,22 +19,11 @@ O arquivo **`backend/.env.example`** contém todas as variáveis necessárias pa
 | `SHAREPOINT_SITE_URL` | URL do site SharePoint (ex.: https://qualiitcombr.sharepoint.com/sites/projetosqualiit) | Não |
 | `SHAREPOINT_FOLDER_PATH_BASE` | Pasta base: **Projetos DevOps** (não incluir nome da biblioteca) | Não |
 
-**Opcionais (principal):** `LOG_LEVEL`, `PIPELINE_FULL_SCAN`, `PIPELINE_ONLY_CLOSED` — ver seção [Comportamento e opcionais](#comportamento-e-opcionais).
-
-### Pipeline Consolidar (obrigatórias)
-
-Além das variáveis **SharePoint** acima (`SHAREPOINT_CLIENT_ID`, `SHAREPOINT_CLIENT_SECRET`, `SHAREPOINT_TENANT_ID`, `SHAREPOINT_SITE_URL`, `SHAREPOINT_FOLDER_PATH_BASE`), defina **uma** das duas:
-
-| Nome | Descrição | Secreto? |
-|------|-----------|----------|
-| `SHAREPOINT_SOURCE_FOLDER_PATHS` | Caminhos na biblioteca separados por **;** (recomendado). Ex.: `Documentação dos Clientes;Documentação dos Projetos;Projetos DevOps OLD;TestePowerAutomate` | Não |
-| `SHAREPOINT_SOURCE_FOLDER_URLS` | URLs de compartilhamento das pastas de origem, separadas por **;** (alternativa) | Não |
-
-A pipeline Consolidar **não** usa `AZURE_DEVOPS_PAT` (apenas SharePoint).
+**Opcionais:** `LOG_LEVEL`, `PIPELINE_FULL_SCAN`, `PIPELINE_ONLY_CLOSED` — ver seção [Comportamento e opcionais](#comportamento-e-opcionais).
 
 ---
 
-## 2. Criar e configurar a Pipeline principal
+## 2. Criar e configurar a Pipeline
 
 ### 2.1 Criar a pipeline
 
@@ -51,14 +33,14 @@ A pipeline Consolidar **não** usa `AZURE_DEVOPS_PAT` (apenas SharePoint).
 4. **Existing Azure Pipelines YAML file** → Branch: `main` (ou `master`) → Path: **`/azure-pipelines.yml`**.
 5. **Continue** (não clique em Run ainda).
 
-### 2.2 Definir as variáveis (Principal)
+### 2.2 Definir as variáveis
 
 1. Na tela da pipeline, clique em **Edit** e no canto superior direito em **Variables**.
-2. **+ New variable** para cada variável da tabela “Pipeline principal (obrigatórias)” acima; use os valores do seu `backend/.env`.
+2. **+ New variable** para cada variável da tabela acima; use os valores do seu `backend/.env`.
 3. Para `AZURE_DEVOPS_PAT` e `SHAREPOINT_CLIENT_SECRET`, marque **Keep this value secret**.
 4. **Save**.
 
-### 2.3 Rodar a pipeline principal
+### 2.3 Rodar a pipeline
 
 1. **Run pipeline** → confirme o branch → **Run**.
 2. O passo **"Executar varredura (pastas + link + anexos)"** processa as Features (Area Path: Quali IT ! Gestao de Projetos): na **primeira execução** (ou com `PIPELINE_FULL_SCAN=1`) processa todas; nas **execuções seguintes** processa apenas Features **novas ou alteradas** (novas Features, Closed, novos anexos).
@@ -68,35 +50,7 @@ Com isso, o SharePoint fica organizado: Features **encerradas** em **Ano/Closed/
 
 ---
 
-## 3. Criar e configurar a Pipeline Consolidar
-
-### 3.1 Criar a pipeline
-
-1. **Pipelines** → **Pipelines** → **New pipeline**.
-2. **Azure Repos Git** → mesmo repositório.
-3. **Existing Azure Pipelines YAML file** → Branch: `main` (ou `master`) → Path: **`/azure-pipelines-consolidate.yml`**.
-4. **Continue** (não clique em Run ainda).
-
-### 3.2 Definir as variáveis (Consolidar)
-
-1. **Edit** → **Variables**.
-2. Crie as variáveis **SharePoint** (mesmas da pipeline principal): `SHAREPOINT_CLIENT_ID`, `SHAREPOINT_CLIENT_SECRET`, `SHAREPOINT_TENANT_ID`, `SHAREPOINT_SITE_URL`, `SHAREPOINT_FOLDER_PATH_BASE`.
-3. Crie **uma** das duas variáveis de origem:
-   - **Recomendado:** `SHAREPOINT_SOURCE_FOLDER_PATHS` com valor:  
-     `Documentação dos Clientes;Documentação dos Projetos;Projetos DevOps OLD;TestePowerAutomate`
-   - **Ou:** `SHAREPOINT_SOURCE_FOLDER_URLS` com as URLs de compartilhamento das pastas de origem, separadas por **;**.
-4. **Save**.
-
-### 3.3 Rodar a pipeline Consolidar
-
-1. **Run pipeline** → **Run**.
-2. O passo **"Consolidar pastas SharePoint"** copia pastas e arquivos das origens para **Projetos DevOps**, mantendo a estrutura Ano > Cliente > Feature ID - Nº - Título; arquivos já existentes no destino são ignorados.
-
-Pastas de origem e destino estão descritas em [PIPELINES_RETRY_E_CONSOLIDAR.md](PIPELINES_RETRY_E_CONSOLIDAR.md).
-
----
-
-## 4. Comportamento e opcionais (Pipeline principal)
+## 3. Comportamento e opcionais
 
 - **Timeout:** o job tem **120 minutos** (em vez do padrão 60).
 - **SharePoint 503:** retry com backoff em 502/503/504 (até 3 tentativas).
@@ -110,36 +64,50 @@ Pastas de origem e destino estão descritas em [PIPELINES_RETRY_E_CONSOLIDAR.md]
 
 ---
 
-## 5. Modo atualização: não recria tudo (Principal)
+## 4. Modo atualização: não recria tudo
 
-A pipeline principal **só atualiza o que falta**; não recria pastas nem reenvia anexos que já existem:
+A pipeline **só atualiza o que falta**; não recria pastas nem reenvia anexos que já existem:
 
 - **Pastas:** criadas somente quando ainda não existem para aquela Feature.
 - **Anexos:** incluídos somente os que ainda não estão na pasta (sem duplicar).
 - **Link:** atualizado no work item apenas quando o valor for diferente.
+- **Closed:** quando a Feature passa para Status Closed (Encerrado), o conteúdo da pasta é movido para **Ano/Closed/Cliente/Feature**.
 
 Para preencher lacunas após erros, execute **uma vez** com **`PIPELINE_FULL_SCAN=1`**.
 
 ---
 
-## 6. Agendamento diário (Pipeline principal)
+## 5. Agendamento semanal
 
-A pipeline principal está configurada para rodar **todo dia às 5:00 (horário de Brasília)**. Varredura **incremental** processa:
+A pipeline está configurada para rodar **semanalmente** (domingos às 5:00, horário de Brasília). Varredura **incremental** processa:
 
 1. **Novas Features** (criação) — principal.
-2. **Atualizações para Features com Status Closed** (encerradas).
+2. **Atualizações para Features com Status Closed** (encerradas; pastas movidas para Closed).
 3. **Inclusão de novos anexos** (Features alteradas desde a última execução).
 
-A consulta usa a data da última execução (`last_run`). Com **`PIPELINE_ONLY_CLOSED`** em branco ou `0` (padrão), novas Features são sempre incluídas.
+A consulta usa a data da última execução (`last_run`). Com **`PIPELINE_ONLY_CLOSED`** em branco ou `0` (padrão), novas Features são sempre incluídas. Após a varredura completa inicial, o uso semanal tende a ser rápido (poucas novas Features, anexos e movimentações para Closed).
 
 - **Primeira execução:** rode **manualmente** (Run pipeline); não há cache ainda, então a varredura é completa.
-- **Execuções seguintes:** às 5:00 a pipeline roda sozinha e processa só o que mudou.
+- **Execuções seguintes:** a pipeline roda no agendamento e processa só o que mudou.
 
 ---
 
-## 7. Estrutura de pastas no SharePoint
+## 6. Estrutura de pastas no SharePoint
 
 - **Pasta base:** Documentações de Projetos > **Projetos DevOps** — [Abrir Projetos DevOps](https://qualiitcombr.sharepoint.com/sites/projetosqualiit/Documentos%20Compartilhados/Forms/AllItems.aspx?id=%2Fsites%2Fprojetosqualiit%2FDocumentos%20Compartilhados%2FProjetos%20DevOps)
 - **Dentro de Projetos DevOps:** **Ano** > **Cliente** (ou **Closed**) > **Feature ID - Nº Proposta - Título**
 
 Defina **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** (só o nome da pasta; incluir o nome da biblioteca faz a API criar a pasta em duplicidade).
+
+---
+
+## 7. Execução local
+
+Para rodar **varredura** e/ou **consolidação** no seu computador (evitando consumo no Azure Repos), use o arquivo **`run_pipelines_local.bat`** na raiz do projeto (não versionado; ver `.gitignore`). Ele oferece:
+
+- **Opção 1 — Varredura:** mesmo que a pipeline principal (Features + pastas + link + anexos); abre a pasta `backend/logs` com o log HTML ao final.
+- **Opção 2 — Consolidar:** move as pastas de origem (Documentação dos Clientes, Documentação dos Projetos, Projetos DevOps OLD, TestePowerAutomate) para **Projetos DevOps**. Para funcionar, defina no **`backend/.env`** a variável **`SHAREPOINT_SOURCE_FOLDER_PATHS`** com o valor:  
+  `Documentação dos Clientes;Documentação dos Projetos;Projetos DevOps OLD;TestePowerAutomate`
+- **Opção 3 — Ambos:** executa primeiro a varredura e depois a consolidação (útil para fazer a consolidação das pastas e em seguida garantir que todas as Features tenham pasta e anexos).
+
+No Azure Repos permanece apenas a pipeline principal (varredura semanal). A consolidação é feita localmente quando necessário.

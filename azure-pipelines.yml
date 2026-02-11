@@ -1,14 +1,14 @@
 # Pipeline de varredura: pastas SharePoint por Feature (FluxoNovasFeatures)
-# Sincroniza: novas Features, anexos adicionados/atualizados, Features encerradas.
-# Agendamento: diário às 5:00 (horário de Brasília); varredura incremental (só o que mudou desde a última execução).
+# Sincroniza: novas Features, anexos adicionados/atualizados, Features encerradas (movimentação para Closed).
+# Agendamento: semanal (domingo 5:00 BRT); varredura incremental (só o que mudou desde a última execução).
 # Variáveis: AZURE_DEVOPS_PAT, SHAREPOINT_*, AZURE_DEVOPS_ORG, AZURE_DEVOPS_PROJECT (ver docs)
-# Timeout: 120 min (evita cancelamento em muitas Features); use PIPELINE_ONLY_CLOSED=1 para processar só Encerradas.
+# Timeout: 120 min; use PIPELINE_ONLY_CLOSED=1 para processar só Encerradas.
 
 trigger: none
 
 schedules:
-  - cron: "0 8 * * *"   # 08:00 UTC = 5:00 BRT (horário de Brasília)
-    displayName: Sincronização diária - novas Features, anexos e Closed
+  - cron: "0 8 * * 0"   # Domingos 08:00 UTC = 5:00 BRT (horário de Brasília)
+    displayName: Sincronização semanal - novas Features, anexos e Closed
     branches:
       include:
         - main

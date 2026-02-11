@@ -105,6 +105,96 @@ class AzureDevOpsClient:
         ids = [str(wi["id"]) for wi in work_items]
         return self.get_work_items_by_ids(ids)
 
+    def _wiql_features(self, extra_where: str = "") -> list[WorkItemResponse]:
+        """WIQL base para Features (Area Path Gestao de Projetos). extra_where é concatenado com AND."""
+        area = "Quali IT - Inovação e Tecnologia\\Quali IT ! Gestao de Projetos"
+        where = f"[System.WorkItemType] = 'Feature' AND [System.AreaPath] UNDER '{area}'"
+        if extra_where.strip():
+            where += " AND " + extra_where.strip()
+        wiql = {
+            "query": (
+                "SELECT [System.Id], [System.Title], [System.AreaPath], [System.CreatedDate], [System.State], "
+                "[Custom.NumeroProposta], [Custom.LinkPastaDocumentacao] FROM WorkItems "
+                f"WHERE {where} ORDER BY [System.Id] DESC"
+            )
+        }
+        r = self._make_request("POST", "wit/wiql", json=wiql)
+        data = r.json()
+        work_items = data.get("workItems", [])
+        if not work_items:
+            return []
+        return self.get_work_items_by_ids([str(wi["id"]) for wi in work_items])
+
+    def find_features_by_numero_proposta(self, numero_proposta: str) -> list[WorkItemResponse]:
+        """Busca Features pelo Custom.NumeroProposta (ex.: 01234-56). Retorna lista (pode haver mais de uma)."""
+        if not (numero_proposta or str(numero_proposta).strip()):
+            return []
+        prop = str(numero_proposta).strip()
+        return self._wiql_features(f"[Custom.NumeroProposta] = '{prop.replace(chr(39), chr(39)+chr(39))}'")
+
+    def find_features_by_title_contains(self, title_fragment: str) -> list[WorkItemResponse]:
+        """Busca Features cujo System.Title contém o fragmento. Retorna lista ordenada por ID DESC."""
+        if not (title_fragment or str(title_fragment).strip()):
+            return []
+        frag = str(title_fragment).strip()
+        if len(frag) < 2:
+            return []
+        esc = frag.replace("'", "''")
+        return self._wiql_features(f"[System.Title] CONTAINS '{esc}'")
+
+    _AREA_GESTAO = "Quali IT - Inovação e Tecnologia\\Quali IT ! Gestao de Projetos"
+    _PROPOSTA_PATTERN = re.compile(r"\d{5}-\d{2}")
+
+    def _is_gestao_feature(self, wi: WorkItemResponse) -> bool:
+        """Verifica se o work item é uma Feature da área Gestão de Projetos."""
+        fields = wi.fields or {}
+        if (fields.get("System.WorkItemType") or "").strip() != "Feature":
+            return False
+        area = (fields.get("System.AreaPath") or "").strip()
+        return area.startswith(self._AREA_GESTAO) or self._AREA_GESTAO in area
+
+    def _client_matches(self, wi: WorkItemResponse, client_name_normalized: str | None) -> bool:
+        """True se client_name_normalized for None ou se o último segmento do AreaPath (normalizado) for igual."""
+        if not client_name_normalized or not client_name_normalized.strip():
+            return True
+        from app.utils.name_utils import normalize_client_name
+
+        area = (wi.fields or {}).get("System.AreaPath") or ""
+        last = area.split("\\")[-1].strip()
+        return normalize_client_name(last).strip().lower() == client_name_normalized.strip().lower()
+
+    def resolve_feature_for_folder_name(
+        self, folder_name: str, client_name_normalized: str | None = None
+    ) -> WorkItemResponse | None:
+        """
+        Resolve o nome da pasta para uma Feature no Azure DevOps (ID, Número da Proposta ou Título).
+        Ordem: 1) Feature ID (inteiro), 2) Número da Proposta (5d-2d), 3) Título contém.
+        Se client_name_normalized for informado, filtra resultados pelo cliente (último segmento do AreaPath).
+        """
+        name = (folder_name or "").strip()
+        if not name:
+            return None
+        # 1) Tenta como ID
+        try:
+            wid = int(name)
+            wi = self.get_work_item_by_id(wid)
+            if wi and self._is_gestao_feature(wi) and self._client_matches(wi, client_name_normalized):
+                return wi
+        except (ValueError, TypeError):
+            pass
+        # 2) Tenta como Número da Proposta (ou extrai do nome)
+        match = self._PROPOSTA_PATTERN.search(name)
+        if match:
+            prop = match.group(0)
+            for wi in self.find_features_by_numero_proposta(prop):
+                if self._client_matches(wi, client_name_normalized):
+                    return wi
+        # 3) Busca por título contendo o nome da pasta
+        for wi in self.find_features_by_title_contains(name):
+            if self._client_matches(wi, client_name_normalized):
+                return wi
+        return None
+
     def get_work_items_by_ids(self, ids: list[str]) -> list[WorkItemResponse]:
         """Obtém Work Items por IDs (com $expand=all para relations/anexos). Faz batch de 200 por request (limite da API)."""
         if not ids:

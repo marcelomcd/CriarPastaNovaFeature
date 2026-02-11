@@ -1,8 +1,6 @@
-# Pipeline "Consolidar SharePoint" e estrutura de pastas
+# Pipeline principal e estrutura de pastas
 
-**Para configurar variáveis e criar as duas pipelines no Azure DevOps**, siga **[CONFIGURAR_PIPELINE.md](CONFIGURAR_PIPELINE.md)**.
-
-Há **duas pipelines**: a **principal** (varredura Azure DevOps + SharePoint) e a **Consolidar SharePoint** (unificar documentos de várias pastas em uma só).
+**No Azure Repos há apenas uma pipeline:** a **pipeline principal** (`azure-pipelines.yml`). Para configurá-la, siga **[CONFIGURAR_PIPELINE.md](CONFIGURAR_PIPELINE.md)**.
 
 ---
 
@@ -10,58 +8,13 @@ Há **duas pipelines**: a **principal** (varredura Azure DevOps + SharePoint) e 
 
 - Varre as Features no Azure DevOps e, para cada uma, garante pasta no SharePoint, link no work item e sincronização de anexos.
 - **Segundo passo automático:** Se alguma Feature falhar (ex.: 400 por campos obrigatórios vazios), a pipeline reprocessa **só esses itens** em um segundo passo: cria a pasta e sincroniza os anexos **sem** atualizar o campo no work item (evita novo 400). Assim, mesmo itens com erro de validação passam a ter pasta e anexos no SharePoint.
+- **Agendamento:** semanal (domingos 5:00 BRT). Após a varredura completa inicial, cada execução processa só: novas Features, novos anexos e movimentação de pastas para **Closed** quando a Feature passa para Status Closed.
 
 ---
 
-## 2. Pipeline "Consolidar SharePoint" (azure-pipelines-consolidate.yml)
+## 2. Estrutura de pastas no SharePoint
 
-**Arquivo:** `azure-pipelines-consolidate.yml`
-
-**Objetivo:** Obter e mover **todas** as pastas e arquivos de **quatro pastas de origem** (na mesma biblioteca do site) para a pasta **Projetos DevOps**, mantendo a estrutura **Ano > Cliente > Feature ID - Nº Proposta - Título**. A estrutura é unificada com base no **Feature ID**, evitando pastas duplicadas ou do mesmo projeto com nomes parecidos. Arquivos que já existirem no destino são ignorados.
-
-### Pastas de origem (4) e destino
-
-| Tipo | Pasta (caminho na biblioteca) | Link (AllItems) |
-|------|-------------------------------|------------------|
-| Origem | Documentação dos Clientes | [Abrir](https://qualiitcombr.sharepoint.com/sites/projetosqualiit/Documentos%20Compartilhados/Forms/AllItems.aspx?id=%2Fsites%2Fprojetosqualiit%2FDocumentos%20Compartilhados%2FDocumenta%C3%A7%C3%A3o%20dos%20Clientes) |
-| Origem | Documentação dos Projetos | [Abrir](https://qualiitcombr.sharepoint.com/sites/projetosqualiit/Documentos%20Compartilhados/Forms/AllItems.aspx?id=%2Fsites%2Fprojetosqualiit%2FDocumentos%20Compartilhados%2FDocumenta%C3%A7%C3%A3o%20dos%20Projetos) |
-| Origem | Projetos DevOps OLD | [Abrir](https://qualiitcombr.sharepoint.com/sites/projetosqualiit/Documentos%20Compartilhados/Forms/AllItems.aspx?id=%2Fsites%2Fprojetosqualiit%2FDocumentos%20Compartilhados%2FProjetos%20DevOps%20OLD) |
-| Origem | TestePowerAutomate | [Abrir](https://qualiitcombr.sharepoint.com/sites/projetosqualiit/Documentos%20Compartilhados/Forms/AllItems.aspx?id=%2Fsites%2Fprojetosqualiit%2FDocumentos%20Compartilhados%2FTestePowerAutomate) |
-| **Destino** | **Projetos DevOps** | [Abrir](https://qualiitcombr.sharepoint.com/sites/projetosqualiit/Documentos%20Compartilhados/Forms/AllItems.aspx?id=%2Fsites%2Fprojetosqualiit%2FDocumentos%20Compartilhados%2FProjetos%20DevOps) |
-
-**Estrutura de destino (igual à principal):** Documentações de Projetos > **Projetos DevOps** > **Ano** > **Cliente** > **Feature ID - Número de Proposta - Título**. A estrutura relativa das origens é preservada; pastas e arquivos são reunidos por Feature ID (evita duplicidade de pastas do mesmo projeto).
-
-### Como usar
-
-1. Crie uma **nova pipeline** no Azure DevOps apontando para `azure-pipelines-consolidate.yml`.
-2. Configure as variáveis (mesmas do SharePoint da pipeline principal) e **uma** das duas opções de origem:
-   - **Recomendado — por caminho:** `SHAREPOINT_SOURCE_FOLDER_PATHS` com os nomes das pastas na biblioteca, separados por **;**  
-     Exemplo: `Documentação dos Clientes;Documentação dos Projetos;Projetos DevOps OLD;TestePowerAutomate`
-   - **Por link de compartilhamento:** `SHAREPOINT_SOURCE_FOLDER_URLS` com as URLs `/:f:/s/...?e=xxx` separadas por **;**.
-3. Defina **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** (apenas o nome da pasta; a API já usa a biblioteca como raiz).
-4. Execute a pipeline. Os arquivos serão copiados mantendo a estrutura; arquivos já existentes no destino são ignorados.
-
-### Variáveis obrigatórias (Consolidar)
-
-| Variável | Descrição | Secreto? |
-|----------|-----------|----------|
-| `SHAREPOINT_CLIENT_ID` | Client ID do app (Entra ID) | Não |
-| `SHAREPOINT_CLIENT_SECRET` | Client Secret | **Sim** |
-| `SHAREPOINT_TENANT_ID` | Tenant ID | Não |
-| `SHAREPOINT_SITE_URL` | URL do site SharePoint | Não |
-| `SHAREPOINT_FOLDER_PATH_BASE` | Apenas **Projetos DevOps** (não incluir nome da biblioteca) | Não |
-| **`SHAREPOINT_SOURCE_FOLDER_PATHS`** ou **`SHAREPOINT_SOURCE_FOLDER_URLS`** | Caminhos na biblioteca (ex.: `Documentação dos Clientes;Projetos DevOps OLD`) **ou** URLs de compartilhamento das pastas de origem, separados por **;** | Não |
-
-**No Azure DevOps:** Pipelines → sua pipeline Consolidar → **Variables**. Para as 4 pastas acima, use **`SHAREPOINT_SOURCE_FOLDER_PATHS`** com:  
-`Documentação dos Clientes;Documentação dos Projetos;Projetos DevOps OLD;TestePowerAutomate`
-
-**Para rodar o script localmente** (`python backend/pipeline_consolidate_sharepoint.py`): no `.env`, além das variáveis de SharePoint, defina `SHAREPOINT_SOURCE_FOLDER_PATHS` ou `SHAREPOINT_SOURCE_FOLDER_URLS`. Veja `backend/.env.example`.
-
----
-
-## 3. Estrutura de pastas no SharePoint
-
-**Pasta base do projeto (subpasta):** **Projetos DevOps**  
+**Pasta base do projeto:** **Projetos DevOps**  
 Ela fica em Documentos Compartilhados. Dentro dela a pipeline cria as subpastas **Ano** > **Cliente** (ou **Closed**) > **Feature ID - Nº Proposta - Título**.
 
 - [Abrir pasta Projetos DevOps](https://qualiitcombr.sharepoint.com/sites/projetosqualiit/Documentos%20Compartilhados/Forms/AllItems.aspx?id=%2Fsites%2Fprojetosqualiit%2FDocumentos%20Compartilhados%2FProjetos%20DevOps)
@@ -71,7 +24,19 @@ Ela fica em Documentos Compartilhados. Dentro dela a pipeline cria as subpastas 
 - **Ano** (ex.: 2025) > **Cliente** > **Feature ID - Nº Proposta - Título** (Features ativas)
 - **Ano** > **Closed** > **Cliente** > **Feature ID - Nº Proposta - Título** (Features encerradas)
 
-Configure **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** na pipeline e no `.env`. Não use o nome da biblioteca (Documentações de Projetos) para evitar criar a pasta em duplicidade.
+Configure **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** na pipeline e no `.env`. Não use o nome da biblioteca para evitar criar a pasta em duplicidade.
+
+---
+
+## 3. Consolidação de pastas (execução local)
+
+A **consolidação** (unificar as pastas de origem em **Projetos DevOps**) não tem pipeline no Azure; é feita **localmente** quando você precisar.
+
+1. No **`backend/.env`**, adicione:
+   - **`SHAREPOINT_SOURCE_FOLDER_PATHS`** = `Documentação dos Clientes;Documentação dos Projetos;Projetos DevOps OLD;TestePowerAutomate`
+2. Execute o **`run_pipelines_local.bat`** na raiz do projeto e escolha **2 (Consolidar)** ou **3 (Ambos)** — a opção 3 roda primeiro a varredura e depois a consolidação.
+
+O script **`backend/pipeline_consolidate_sharepoint.py`** é o mesmo que rodava na antiga pipeline Consolidar; agora é chamado pelo .bat ou manualmente (`cd backend` e `python pipeline_consolidate_sharepoint.py`).
 
 ---
 

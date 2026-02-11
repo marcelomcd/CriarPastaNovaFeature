@@ -440,8 +440,11 @@ class SharePointFileService:
         folder_id: str,
         *,
         prefix: str = "",
+        _top_level: bool = True,
     ) -> Iterator[tuple[str, str, str]]:
         """Lista todos os arquivos (não pastas) sob a pasta, recursivamente. Gera (item_id, name, relative_path)."""
+        if _top_level:
+            logger.info("  Listando pasta recursivamente (aguarde, pode demorar em pastas grandes)...")
         token = self.auth_service.get_access_token()
         list_url = f"{self.graph_base_url}/drives/{drive_id}/items/{folder_id}/children"
         r = requests.get(
@@ -458,7 +461,7 @@ class SharePointFileService:
             if item.get("file") is not None:
                 yield (item["id"], name, rel.lstrip("/"))
             elif item.get("folder") is not None:
-                yield from self.list_files_recursive(drive_id, item["id"], prefix=rel)
+                yield from self.list_files_recursive(drive_id, item["id"], prefix=rel, _top_level=False)
 
     def download_item_content(self, drive_id: str, item_id: str) -> bytes:
         """Baixa o conteúdo binário de um driveItem (arquivo)."""

@@ -103,6 +103,36 @@ def sanitize_attachment_filename(name: str, max_length: int = 200) -> str:
     return s.strip() or "attachment"
 
 
+# Padrão Número da Proposta: 5 dígitos, hífen, 2 dígitos (ex.: 01234-56)
+NUMERO_PROPOSTA_PATTERN = re.compile(r"\d{5}-\d{2}", re.IGNORECASE)
+
+
+def _title_without_duplicate_proposta(title: str, numero_proposta: Optional[str]) -> str:
+    """
+    Remove do título a primeira ocorrência do número da proposta, se for igual,
+    para evitar duplicar no nome da pasta (ex.: "12345 - 01234-56 - 01234-56 Algo" -> "12345 - 01234-56 - Algo").
+    """
+    if not title or not numero_proposta:
+        return title or ""
+    prop = (numero_proposta or "").strip()
+    if not prop or prop == "N/A":
+        return title
+    # Se o título começa com o mesmo número da proposta (ex.: "01234-56 Descrição"), remove
+    tit = title.strip()
+    if tit.startswith(prop):
+        rest = tit[len(prop) :].strip().lstrip(" -:")
+        return rest or tit
+    # Remove ocorrência do padrão 5d-2d se for igual ao numero_proposta em qualquer posição
+    match = NUMERO_PROPOSTA_PATTERN.search(tit)
+    if match and match.group(0) == prop:
+        # Remove essa ocorrência e colapsa espaços
+        before = tit[: match.start()].strip().rstrip(" -")
+        after = tit[match.end() :].strip().lstrip(" -")
+        parts = [p for p in (before, after) if p]
+        return " ".join(parts) if parts else tit
+    return tit
+
+
 def build_feature_folder_name(
     feature_id: int,
     numero_proposta: Optional[str],
@@ -111,16 +141,33 @@ def build_feature_folder_name(
 ) -> str:
     """
     Monta o nome da pasta da Feature: "{FeatureId} - {NumeroProposta} - {Titulo}".
+    Se o título já contiver o número da proposta (ex.: 01234-56), evita duplicar no nome.
 
     Args:
         feature_id: System.Id da Feature.
         numero_proposta: Custom.NumeroProposta (pode ser vazio).
-        title: System.Title (será sanitizado).
+        title: System.Title (será sanitizado; duplicata de numero_proposta é removida).
         proposta_placeholder: Texto quando numero_proposta estiver vazio.
 
     Returns:
-        Nome da pasta (ex.: "12345 - N/A - Implementar login").
+        Nome da pasta (ex.: "12345 - 01234-56 - Implementar login").
     """
     prop = (numero_proposta or "").strip() or proposta_placeholder
-    tit = sanitize_folder_name(title, max_length=200) or "Sem título"
+    tit_raw = _title_without_duplicate_proposta(title or "", numero_proposta if prop != "N/A" else None)
+    tit = sanitize_folder_name(tit_raw, max_length=200) or "Sem título"
     return f"{feature_id} - {prop} - {tit}"
+
+
+# Padrão da pasta de Feature: "ID - Nº Proposta ou N/A - Título"
+FEATURE_FOLDER_NAME_PATTERN = re.compile(
+    r"^\d+\s*-\s*(\d{5}-\d{2}|N/A)\s*-\s*.+",
+    re.IGNORECASE,
+)
+
+
+def is_canonical_feature_folder_name(folder_name: str) -> bool:
+    """
+    Verifica se o nome da pasta segue o padrão: "Feature ID - Número Proposta - Título"
+    (ex.: 12345 - 01234-56 - Título ou 12345 - N/A - Título).
+    """
+    return bool(folder_name and FEATURE_FOLDER_NAME_PATTERN.match((folder_name or "").strip()))
