@@ -58,8 +58,8 @@ class Settings(BaseSettings):
         description="URL do site SharePoint (ex: https://qualiitcombr.sharepoint.com/sites/projetosqualiit)",
     )
     SHAREPOINT_FOLDER_PATH_BASE: str = Field(
-        default="Documentos Compartilhados/Projetos DevOps",
-        description="Caminho base da biblioteca no SharePoint. Para estrutura Documentações de Projetos > Projetos DevOps, use apenas 'Projetos DevOps'.",
+        default="Projetos DevOps",
+        description="Pasta base dentro da biblioteca (ex.: Projetos DevOps). A API já usa a biblioteca Documentações de Projetos como raiz; não inclua o nome da biblioteca para evitar pasta duplicada.",
     )
 
     # Webhook (Service Hooks Azure DevOps → FastAPI)

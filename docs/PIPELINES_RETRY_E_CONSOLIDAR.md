@@ -27,7 +27,7 @@ A estrutura das pastas de origem é preservada: se na origem existir `Ano/Client
 
 1. Crie uma **nova pipeline** no Azure DevOps apontando para `azure-pipelines-consolidate.yml`.
 2. Configure as variáveis (mesmas do SharePoint da pipeline principal + **`SHAREPOINT_SOURCE_FOLDER_URLS`**).
-3. Defina **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** para que o destino seja **Documentações de Projetos > Projetos DevOps** (e abaixo as subpastas Ano > Cliente > Feature...).
+3. Defina **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** (apenas o nome da pasta; a biblioteca já é usada como raiz pela API).
 4. Em **`SHAREPOINT_SOURCE_FOLDER_URLS`**, informe as URLs de compartilhamento das pastas de origem, separadas por **ponto e vírgula (;)**.  
    Exemplo:  
    `https://qualiitcombr.sharepoint.com/:f:/s/projetosqualiit/IgCYjhnxm56qQZsITxYIqeiPAWPNl2N3jEKbF_VatJxTc3Y?e=de9hzu;https://qualiitcombr.sharepoint.com/:f:/s/projetosqualiit/IgB9SwRtzkL1SocBGfXxmAMNAcrZURe5GIe4qMIIODpuWPw?e=DbWxCY`
@@ -41,19 +41,28 @@ A estrutura das pastas de origem é preservada: se na origem existir `Ano/Client
 | `SHAREPOINT_CLIENT_SECRET` | Client Secret | **Sim** |
 | `SHAREPOINT_TENANT_ID` | Tenant ID | Não |
 | `SHAREPOINT_SITE_URL` | URL do site SharePoint de destino | Não |
-| `SHAREPOINT_FOLDER_PATH_BASE` | Pasta base de destino: **Projetos DevOps** | Não |
+| `SHAREPOINT_FOLDER_PATH_BASE` | Apenas **Projetos DevOps** (não incluir nome da biblioteca) | Não |
 | **`SHAREPOINT_SOURCE_FOLDER_URLS`** | URLs de compartilhamento das pastas de origem, separadas por **;** | Não |
+
+**No Azure DevOps:** defina essas variáveis em **Pipelines** → sua pipeline Consolidar → **Variables** (as de SharePoint são as mesmas da pipeline principal; acrescente `SHAREPOINT_SOURCE_FOLDER_URLS`).
+
+**Para rodar o script localmente** (`python backend/pipeline_consolidate_sharepoint.py`): o `.env` já deve ter as variáveis de SharePoint (site, client id, secret, tenant, folder path base). Inclua também `SHAREPOINT_SOURCE_FOLDER_URLS` com as URLs separadas por `;`. Veja `backend/.env.example`.
 
 ---
 
 ## 3. Estrutura de pastas no SharePoint
 
-Padrão desejado:
+**Pasta base do projeto (subpasta):** **Projetos DevOps**  
+Ela fica em Documentos Compartilhados. Dentro dela a pipeline cria as subpastas **Ano** > **Cliente** (ou **Closed**) > **Feature ID - Nº Proposta - Título**.
 
-- **Documentações de Projetos** > **Projetos DevOps** > **Ano** > **Cliente** > **Feature ID - Nº Proposta - Título**
-- Para Features encerradas: **Documentações de Projetos** > **Projetos DevOps** > **Ano** > **Closed** > **Cliente** > **Feature ID - Nº Proposta - Título**
+- [Abrir pasta Projetos DevOps](https://qualiitcombr.sharepoint.com/sites/projetosqualiit/Documentos%20Compartilhados/Forms/AllItems.aspx?id=%2Fsites%2Fprojetosqualiit%2FDocumentos%20Compartilhados%2FProjetos%20DevOps)
 
-Configure **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** na pipeline (e no `.env`, se usar) para que a raiz seja **Projetos DevOps** (sem a camada "Documentos Compartilhados").
+**Estrutura criada dentro de Projetos DevOps:**
+
+- **Ano** (ex.: 2025) > **Cliente** > **Feature ID - Nº Proposta - Título** (Features ativas)
+- **Ano** > **Closed** > **Cliente** > **Feature ID - Nº Proposta - Título** (Features encerradas)
+
+Configure **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** na pipeline e no `.env`. Não use o nome da biblioteca (Documentações de Projetos) para evitar criar a pasta em duplicidade.
 
 ---
 

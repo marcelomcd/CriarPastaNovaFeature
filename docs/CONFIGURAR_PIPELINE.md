@@ -17,7 +17,7 @@ Configure estas variáveis em **Pipelines** → sua pipeline → **Edit** → **
 | `SHAREPOINT_CLIENT_SECRET` | Client Secret do app | **Sim** |
 | `SHAREPOINT_TENANT_ID` | Tenant ID (Diretório) do Entra ID | Não |
 | `SHAREPOINT_SITE_URL` | URL do site SharePoint (ex.: https://qualiitcombr.sharepoint.com/sites/projetosqualiit) | Não |
-| `SHAREPOINT_FOLDER_PATH_BASE` | Caminho base da biblioteca (ex.: Documentos Compartilhados/Projetos DevOps) | Não |
+| `SHAREPOINT_FOLDER_PATH_BASE` | Pasta base: **Projetos DevOps** (não incluir nome da biblioteca) | Não |
 
 **Variáveis opcionais (não obrigatórias para a 1ª execução):**
 
@@ -89,6 +89,9 @@ A **pipeline principal** faz um segundo passo automático para os itens que falh
 
 ---
 
-## Estrutura de pastas (uma subpasta só)
+## Estrutura de pastas no SharePoint
 
-Para que a raiz seja **Documentações de Projetos > Projetos DevOps** (sem a camada "Documentos Compartilhados"), defina **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** nas variáveis da pipeline e no `.env`.
+- **Estrutura (breadcrumb):** Documentações de Projetos > Projetos DevOps — [Abrir Projetos DevOps](https://qualiitcombr.sharepoint.com/sites/projetosqualiit/Documentos%20Compartilhados/Forms/AllItems.aspx?id=%2Fsites%2Fprojetosqualiit%2FDocumentos%20Compartilhados%2FProjetos%20DevOps)
+- **Dentro de Projetos DevOps** a pipeline cria: **Ano** > **Cliente** (ou **Closed**) > **Feature ID - Nº Proposta - Título**
+
+Defina **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** (só o nome da pasta; incluir o nome da biblioteca faz a API criar a pasta em duplicidade).

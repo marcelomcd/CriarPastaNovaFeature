@@ -38,6 +38,9 @@ steps:
         echo "##vso[task.logissue type=error]SHAREPOINT_SOURCE_FOLDER_URLS não configurada"
         exit 1
       fi
+      if [ -z "$(SHAREPOINT_FOLDER_PATH_BASE)" ]; then
+        echo "##vso[task.logissue type=warning]SHAREPOINT_FOLDER_PATH_BASE não definida; será usado o default do código (Projetos DevOps)"
+      fi
       echo "Variáveis validadas"
     displayName: "Validar variáveis"
     env:
@@ -45,6 +48,7 @@ steps:
       SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
       SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
       SHAREPOINT_SOURCE_FOLDER_URLS: $(SHAREPOINT_SOURCE_FOLDER_URLS)
+      SHAREPOINT_FOLDER_PATH_BASE: $(SHAREPOINT_FOLDER_PATH_BASE)
 
   - script: |
       cd backend
