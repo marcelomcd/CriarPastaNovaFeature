@@ -22,7 +22,7 @@ Configure estas variáveis em **Pipelines** → sua pipeline → **Edit** → **
 **Variáveis opcionais (não obrigatórias para a 1ª execução):**
 
 - **`LOG_LEVEL`** — O YAML já define `INFO`; só crie essa variável se quiser outro nível (ex.: `DEBUG`).
-- **`PIPELINE_FULL_SCAN`** — Na **primeira** execução não é preciso: como ainda não existe cache, a varredura já é **completa**. Use `1` ou `true` se a primeira execução foi **cancelada** ou **falhou** antes do fim (assim a próxima run faz varredura completa de novo) ou para forçar varredura completa em execuções seguintes (ex.: reparo).
+- **`PIPELINE_FULL_SCAN`** — Na **primeira** execução não é preciso: como ainda não existe cache, a varredura já é **completa**. Use `1` ou `true` para: (a) primeira execução **cancelada/falhou** antes do fim; (b) **preencher lacunas** (criar pastas e incluir anexos que faltaram em runs anteriores); (c) forçar varredura completa em qualquer execução. Em modo completo, a lógica continua sendo *só criar o que falta* (sem duplicar pastas nem anexos).
 
 ---
 
@@ -48,7 +48,19 @@ Configure estas variáveis em **Pipelines** → sua pipeline → **Edit** → **
 2. O passo **"Executar varredura (pastas + link + anexos)"** processa as Features (Area Path: Quali IT ! Gestao de Projetos): na **primeira execução** (ou com `PIPELINE_FULL_SCAN=1`) processa todas; nas **execuções seguintes** processa apenas Features **novas ou alteradas** (ex.: novo anexo), graças ao cache da data da última execução.
 3. Ao final, o artefato **logs** pode ser baixado (pasta `backend/logs`). O log da execução é um arquivo **HTML** (`pipeline_YYYYMMDD_HHMMSS.html`) para leitura fácil no navegador.
 
-Com isso, o SharePoint fica organizado: Features **encerradas** em **Ano/Closed/Cliente/Feature**; as demais em **Ano/Cliente/Feature**. Não há pastas nem anexos duplicados.
+Com isso, o SharePoint fica organizado: Features **encerradas** em **Ano/Closed/Cliente/Feature**; as demais em **Ano/Cliente/Feature**.
+
+---
+
+## Modo atualização: não recria tudo
+
+A pipeline **só atualiza o que falta**; não recria pastas nem reenvia anexos que já existem:
+
+- **Pastas:** são **criadas somente** quando ainda não existem para aquela Feature. Se a pasta já existir, ela é reutilizada.
+- **Anexos:** são **incluídos somente** os que ainda não estão na pasta. Arquivos já existentes (mesmo nome) são ignorados, sem duplicar.
+- **Link:** o campo `Custom.LinkPastaDocumentacao` no Azure DevOps é atualizado apenas quando o valor for diferente.
+
+Assim, rodar a pipeline de novo (incremental ou com varredura completa) **não gera duplicidade**. Para preencher lacunas após erros (pastas ou anexos que não foram criados na primeira vez), execute **uma vez** com **`PIPELINE_FULL_SCAN=1`**: todas as Features serão processadas e, para cada uma, só o que faltar será criado ou incluído.
 
 ---
 
@@ -64,3 +76,19 @@ A consulta usa a data da última execução (`last_run`): só são buscadas Feat
 
 - **Primeira execução:** rode **manualmente** (Run pipeline); não há cache ainda, então a varredura é completa.
 - **Execuções seguintes:** às 5:00 da manhã a pipeline roda sozinha e processa só o que mudou (novas Features, anexos, Closed).
+
+---
+
+## Pipeline Consolidar SharePoint
+
+- **Consolidar SharePoint** (`azure-pipelines-consolidate.yml`): move documentos de várias pastas (URLs de compartilhamento) para a pasta do projeto, na mesma estrutura (Projetos DevOps > Ano > Cliente > Feature...), sem duplicar arquivos.
+
+Variáveis e uso: **[PIPELINES_RETRY_E_CONSOLIDAR.md](PIPELINES_RETRY_E_CONSOLIDAR.md)**.
+
+A **pipeline principal** faz um segundo passo automático para os itens que falharam: reprocessa apenas pasta e anexos (sem atualizar o work item), para que mesmo Features com erro 400 (campos obrigatórios) tenham pasta e anexos no SharePoint.
+
+---
+
+## Estrutura de pastas (uma subpasta só)
+
+Para que a raiz seja **Documentações de Projetos > Projetos DevOps** (sem a camada "Documentos Compartilhados"), defina **`SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps`** nas variáveis da pipeline e no `.env`.

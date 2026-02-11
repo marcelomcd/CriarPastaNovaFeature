@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     )
     SHAREPOINT_FOLDER_PATH_BASE: str = Field(
         default="Documentos Compartilhados/Projetos DevOps",
-        description="Caminho base da biblioteca no SharePoint (Ano/Cliente/Feature... criados abaixo)",
+        description="Caminho base da biblioteca no SharePoint. Para estrutura Documentações de Projetos > Projetos DevOps, use apenas 'Projetos DevOps'.",
     )
 
     # Webhook (Service Hooks Azure DevOps → FastAPI)

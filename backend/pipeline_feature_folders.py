@@ -1,8 +1,14 @@
 """
-Script de varredura: lista todas as Features (Azure DevOps) e para cada uma
-garante pasta no SharePoint, link em Custom.LinkPastaDocumentacao e sincronização de anexos.
-Executado pela pipeline agendada (azure-pipelines.yml).
+Script de varredura: lista Features (Azure DevOps) e para cada uma garante pasta no SharePoint,
+link em Custom.LinkPastaDocumentacao e sincronização de anexos.
+
+Modo de atualização (não recria tudo):
+- Pastas: só são criadas se ainda não existirem para aquela Feature.
+- Anexos: só são enviados os que ainda não estão na pasta (evita duplicar).
+- Link: atualizado no work item apenas se estiver diferente.
+
 Após a primeira execução, a varredura é incremental (só Features novas ou alteradas).
+Para processar todas as Features de novo (preencher lacunas), use PIPELINE_FULL_SCAN=1.
 Log em HTML: backend/logs/pipeline_YYYYMMDD_HHMMSS.html (publicado como artefato).
 """
 import logging
@@ -73,6 +79,7 @@ def main() -> int:
             logger.info("Varredura completa: %s Feature(s) encontrada(s)", len(features))
         ok = 0
         err = 0
+        failed_ids: list[int] = []
         for wi in features:
             try:
                 svc.process_feature(wi.id)
@@ -80,6 +87,7 @@ def main() -> int:
             except Exception as e:
                 logger.exception("Feature %s: %s", wi.id, e)
                 err += 1
+                failed_ids.append(wi.id)
                 try:
                     info = work_item_to_feature_info(wi)
                     path = feature_info_to_folder_path(info)
@@ -94,6 +102,20 @@ def main() -> int:
                     )
                 except Exception as log_ex:
                     logger.warning("Feature %s: não foi possível registrar no log HTML: %s", wi.id, log_ex)
+        if failed_ids:
+            logger.info("Segundo passo: reprocessando %s item(ns) com falha (apenas pasta e anexos, sem atualizar work item)", len(failed_ids))
+            retry_ok = 0
+            retry_err = 0
+            for wi_id in failed_ids:
+                try:
+                    svc.process_feature(wi_id, skip_work_item_update=True)
+                    retry_ok += 1
+                except Exception as e:
+                    logger.exception("Feature %s (retry): %s", wi_id, e)
+                    retry_err += 1
+            logger.info("Retry: %s ok, %s erro(s)", retry_ok, retry_err)
+            ok += retry_ok
+            err = retry_err
         logger.info("Varredura concluída: %s ok, %s erro(s)", ok, err)
         _write_last_run()
         # Com PIPELINE_FAIL_ON_FEATURE_ERROR=False (default), o passo não falha quando há erros em Features (relatório HTML tem o detalhe).

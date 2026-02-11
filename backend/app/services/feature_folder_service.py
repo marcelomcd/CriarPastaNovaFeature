@@ -79,9 +79,13 @@ class FeatureFolderService:
         self.devops = devops_client or AzureDevOpsClient()
         self.sharepoint = sharepoint_service or SharePointFileService()
 
-    def process_feature(self, work_item_id: int) -> dict:
+    def process_feature(self, work_item_id: int, *, skip_work_item_update: bool = False) -> dict:
         """
-        Para uma Feature: garante pasta no SharePoint, link e anexos.
+        Para uma Feature: garante pasta no SharePoint, link e anexos (modo atualização).
+        - Pasta: criada somente se ainda não existir.
+        - Anexos: enviados somente os que ainda não estão na pasta (sem duplicar).
+        - Link: atualizado no Azure DevOps apenas se estiver diferente (omitido se skip_work_item_update=True).
+        skip_work_item_update: quando True, não atualiza Custom.LinkPastaDocumentacao (útil para itens que falham com 400 por campos obrigatórios).
         Retorna dict com folder_id, web_url, attachments_synced, etc.
         """
         wi = self.devops.get_work_item_by_id(work_item_id)
@@ -109,10 +113,13 @@ class FeatureFolderService:
 
         web_url = self.sharepoint.create_sharing_link(drive_id, folder_id)
 
-        current_link = (wi.fields.get("Custom.LinkPastaDocumentacao") or "").strip()
-        if current_link != web_url:
-            self.devops.update_work_item_link_pasta(work_item_id, web_url)
-            logger.info("Atualizado Custom.LinkPastaDocumentacao para Feature %s", work_item_id)
+        if not skip_work_item_update:
+            current_link = (wi.fields.get("Custom.LinkPastaDocumentacao") or "").strip()
+            if current_link != web_url:
+                self.devops.update_work_item_link_pasta(work_item_id, web_url)
+                logger.info("Atualizado Custom.LinkPastaDocumentacao para Feature %s", work_item_id)
+        else:
+            logger.info("Feature %s: pasta e anexos garantidos (atualização do work item omitida)", work_item_id)
 
         # Listar nomes já existentes na pasta para não duplicar anexos
         existing_names: set[str] = set()

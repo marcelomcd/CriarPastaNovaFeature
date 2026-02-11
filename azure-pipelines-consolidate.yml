@@ -1,0 +1,61 @@
+# Pipeline "Consolidar SharePoint": move documentos de pastas de origem (URLs de compartilhamento)
+# para a pasta do projeto, preservando a estrutura Projetos DevOps > Ano > Cliente > Feature...
+# Sem duplicar arquivos; mesmo padrão da pipeline principal.
+# Variáveis: SHAREPOINT_* + SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps + SHAREPOINT_SOURCE_FOLDER_URLS (ver docs).
+
+trigger: none
+
+pool:
+  vmImage: "ubuntu-latest"
+
+variables:
+  PYTHON_VERSION: "3.10"
+  LOG_LEVEL: "INFO"
+
+steps:
+  - checkout: self
+    displayName: "Checkout do código"
+    fetchDepth: 1
+
+  - task: UsePythonVersion@0
+    displayName: "Configurar Python $(PYTHON_VERSION)"
+    inputs:
+      versionSpec: "$(PYTHON_VERSION)"
+      addToPath: true
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r backend/requirements.txt
+    displayName: "Instalar dependências Python"
+    workingDirectory: "$(Build.SourcesDirectory)"
+
+  - script: |
+      if [ -z "$(SHAREPOINT_CLIENT_ID)" ] || [ -z "$(SHAREPOINT_CLIENT_SECRET)" ] || [ -z "$(SHAREPOINT_TENANT_ID)" ]; then
+        echo "##vso[task.logissue type=error]Variáveis SharePoint obrigatórias"
+        exit 1
+      fi
+      if [ -z "$(SHAREPOINT_SOURCE_FOLDER_URLS)" ]; then
+        echo "##vso[task.logissue type=error]SHAREPOINT_SOURCE_FOLDER_URLS não configurada"
+        exit 1
+      fi
+      echo "Variáveis validadas"
+    displayName: "Validar variáveis"
+    env:
+      SHAREPOINT_CLIENT_ID: $(SHAREPOINT_CLIENT_ID)
+      SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
+      SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
+      SHAREPOINT_SOURCE_FOLDER_URLS: $(SHAREPOINT_SOURCE_FOLDER_URLS)
+
+  - script: |
+      cd backend
+      python pipeline_consolidate_sharepoint.py
+    displayName: "Consolidar pastas SharePoint"
+    env:
+      SHAREPOINT_CLIENT_ID: $(SHAREPOINT_CLIENT_ID)
+      SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
+      SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
+      SHAREPOINT_SITE_URL: $(SHAREPOINT_SITE_URL)
+      SHAREPOINT_FOLDER_PATH_BASE: $(SHAREPOINT_FOLDER_PATH_BASE)
+      LOG_LEVEL: $(LOG_LEVEL)
+      SHAREPOINT_SOURCE_FOLDER_URLS: $(SHAREPOINT_SOURCE_FOLDER_URLS)
+    continueOnError: false

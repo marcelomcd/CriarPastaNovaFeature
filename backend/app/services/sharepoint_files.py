@@ -1,6 +1,7 @@
 """Serviço para criar pastas, links de compartilhamento e upload no SharePoint (Microsoft Graph)."""
 import logging
 from pathlib import Path
+from typing import Iterator
 from urllib.parse import quote
 
 import requests
@@ -212,7 +213,7 @@ class SharePointFileService:
 
     def ensure_folder_path(self, relative_path: str) -> tuple[str, str]:
         """
-        Garante que a pasta (e subpastas) existem. Cria em cadeia se necessário.
+        Garante que a pasta (e subpastas) existem. Só cria o que falta; se já existir, retorna o ID.
         relative_path: ex. "2025/Camil Alimentos/12345 - N/A - Título"
         Segmentos são sanitizados para SharePoint (trailing dot/space, nomes reservados).
         Retorna (drive_id, folder_item_id).
@@ -353,3 +354,81 @@ class SharePointFileService:
             if rr.status_code != 202:
                 rr.raise_for_status()
         raise ValueError("Upload em chunks não retornou item final")
+
+    @staticmethod
+    def _encode_sharing_url(sharing_url: str) -> str:
+        """Codifica URL de compartilhamento para uso em /shares/{encoded}/driveItem (base64url + prefixo u!)."""
+        import base64
+        url = (sharing_url or "").strip()
+        if not url:
+            raise ValueError("URL de compartilhamento vazia")
+        b64 = base64.b64encode(url.encode("utf-8")).decode("ascii").rstrip("=").replace("/", "_").replace("+", "-")
+        return "u!" + b64
+
+    def get_drive_item_by_sharing_url(self, sharing_url: str) -> dict:
+        """
+        Resolve uma URL de compartilhamento do SharePoint/OneDrive e retorna o driveItem.
+        Retorna dict com id, driveId, name, file ou folder (facet).
+        """
+        token = self.auth_service.get_access_token()
+        encoded = self._encode_sharing_url(sharing_url)
+        url = f"{self.graph_base_url}/shares/{encoded}/driveItem"
+        r = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/json",
+                "Prefer": "redeemSharingLink",
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        data = r.json()
+        drive_id = (data.get("parentReference") or {}).get("driveId") or (data.get("remoteItem", {}).get("parentReference") or {}).get("driveId")
+        if not drive_id:
+            drive_id = data.get("driveId")
+        return {
+            "id": data.get("id"),
+            "driveId": drive_id,
+            "name": data.get("name"),
+            "file": data.get("file"),
+            "folder": data.get("folder"),
+        }
+
+    def list_files_recursive(
+        self,
+        drive_id: str,
+        folder_id: str,
+        *,
+        prefix: str = "",
+    ) -> Iterator[tuple[str, str, str]]:
+        """Lista todos os arquivos (não pastas) sob a pasta, recursivamente. Gera (item_id, name, relative_path)."""
+        token = self.auth_service.get_access_token()
+        list_url = f"{self.graph_base_url}/drives/{drive_id}/items/{folder_id}/children"
+        r = requests.get(
+            list_url,
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+            timeout=30,
+        )
+        r.raise_for_status()
+        for item in r.json().get("value", []):
+            name = (item.get("name") or "").strip()
+            if not name:
+                continue
+            rel = f"{prefix}/{name}" if prefix else name
+            if item.get("file") is not None:
+                yield (item["id"], name, rel.lstrip("/"))
+            elif item.get("folder") is not None:
+                yield from self.list_files_recursive(drive_id, item["id"], prefix=rel)
+
+    def download_item_content(self, drive_id: str, item_id: str) -> bytes:
+        """Baixa o conteúdo binário de um driveItem (arquivo)."""
+        token = self.auth_service.get_access_token()
+        url = f"{self.graph_base_url}/drives/{drive_id}/items/{item_id}/content"
+        r = requests.get(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=120,
+        )
+        r.raise_for_status()
+        return r.content
