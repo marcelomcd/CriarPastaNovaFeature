@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # Script de consolidação (local): caminhos ou URLs das pastas de origem, separados por ;
     SHAREPOINT_SOURCE_FOLDER_PATHS: str = Field(
         default="",
-        description="Caminhos na biblioteca separados por ; (ex.: Documentação dos Clientes;Projetos DevOps OLD). Lido do .env ao rodar pipeline_consolidate_sharepoint.py.",
+        description="Caminhos na biblioteca separados por ; (ex.: Documentação dos Clientes;Documentação dos Projetos;Projetos DevOps OLD). Tudo é consolidado em Projetos DevOps com resolução por Nº proposta/título no Azure DevOps. Lido do .env ao rodar pipeline_consolidate_sharepoint.py.",
     )
     SHAREPOINT_SOURCE_FOLDER_URLS: str = Field(
         default="",

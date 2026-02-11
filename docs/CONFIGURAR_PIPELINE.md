@@ -1,6 +1,11 @@
 # Instruções para configurar a Pipeline (FluxoNovasFeatures)
 
-Há **apenas uma pipeline** no Azure Repos: a **pipeline principal** (`azure-pipelines.yml`), que faz a varredura de Features, criação de pastas no SharePoint, link no work item e sincronização de anexos. Use os **mesmos nomes e valores** do arquivo `backend/.env` (ou do modelo `backend/.env.example`) ao criar as variáveis em **Pipelines → Variables**. Nunca commite o `.env`.
+Há **duas pipelines** no Azure Repos:
+
+1. **Pipeline principal** (`azure-pipelines.yml`): varredura de Features, criação de pastas no SharePoint, link no work item e sincronização de anexos. **Agendada para toda segunda-feira às 05:00** (horário de Brasília).
+2. **Pipeline de organização** (`azure-pipelines-organize.yml`): reorganização estrutural da pasta Projetos DevOps (Ano > Cliente > Feature, mesclar Qualiit → Quali It, remover duplicatas em 2020-2023). **Sem agendamento** — executar **somente quando houver necessidade** de organizar a pasta principal.
+
+Use os **mesmos nomes e valores** do arquivo `backend/.env` (ou do modelo `backend/.env.example`) ao criar as variáveis em **Pipelines → Variables**. Nunca commite o `.env`.
 
 ---
 
@@ -25,13 +30,15 @@ O arquivo **`backend/.env.example`** contém as variáveis da pipeline principal
 
 ## 2. Criar e configurar a Pipeline
 
-### 2.1 Criar a pipeline
+### 2.1 Criar a pipeline principal
 
 1. Acesse o projeto no Azure DevOps (ex.: `https://dev.azure.com/qualiit/ALM`).
 2. **Pipelines** → **Pipelines** → **New pipeline** (ou **Create Pipeline**).
 3. **Azure Repos Git** → repositório do projeto (ex.: **Qualiit.FluxoNovasFeatures**).
 4. **Existing Azure Pipelines YAML file** → Branch: `main` (ou `master`) → Path: **`/azure-pipelines.yml`**.
 5. **Continue** (não clique em Run ainda).
+
+**Pipeline de organização (opcional):** para criar a pipeline secundária (reorganização sob demanda), repita o processo escolhendo Path: **`/azure-pipelines-organize.yml`**. Use as mesmas variáveis; essa pipeline **não tem agendamento** e deve ser executada apenas quando for necessário reorganizar a pasta Projetos DevOps.
 
 ### 2.2 Definir as variáveis
 
@@ -77,9 +84,9 @@ Para preencher lacunas após erros, execute **uma vez** com **`PIPELINE_FULL_SCA
 
 ---
 
-## 5. Agendamento semanal
+## 5. Agendamento semanal (pipeline principal)
 
-A pipeline está configurada para rodar **semanalmente** (domingos às 5:00, horário de Brasília). Varredura **incremental** processa:
+A pipeline principal está configurada para rodar **toda segunda-feira às 05:00** (horário de Brasília). Varredura **incremental** processa:
 
 1. **Novas Features** (criação) — principal.
 2. **Atualizações para Features com Status Closed** (encerradas; pastas movidas para Closed).

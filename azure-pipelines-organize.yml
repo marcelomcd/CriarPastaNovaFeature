@@ -1,32 +1,23 @@
-# Pipeline de varredura: pastas SharePoint por Feature (FluxoNovasFeatures)
-# Sincroniza: novas Features, anexos adicionados/atualizados, Features encerradas (movimentação para Closed).
-# Agendamento: semanal (segunda-feira 5:00 BRT); varredura incremental (só o que mudou desde a última execução).
-# Consolidação NÃO roda na pipeline — apenas localmente.
-# Variáveis: AZURE_DEVOPS_PAT, SHAREPOINT_*, AZURE_DEVOPS_ORG, AZURE_DEVOPS_PROJECT (ver docs)
-# Timeout: 120 min; use PIPELINE_ONLY_CLOSED=1 para processar só Encerradas.
+# Pipeline secundária: reorganização estrutural da pasta Projetos DevOps (execução sob demanda)
+# Faz exatamente o que o script local faz: mover pastas para Ano > Cliente > Feature, mesclar Qualiit → Quali It, remover duplicatas em 2020-2023.
+# NÃO possui agendamento — rodar SOMENTE quando houver necessidade de reorganizar a pasta principal.
+# Variáveis: mesmas da pipeline principal (AZURE_DEVOPS_PAT, SHAREPOINT_*, AZURE_DEVOPS_ORG, AZURE_DEVOPS_PROJECT).
+# Ver README.md e docs/CONFIGURAR_PIPELINE.md.
 
 trigger: none
 
-schedules:
-  - cron: "0 8 * * 1"   # Segundas 08:00 UTC = 5:00 BRT (horário de Brasília)
-    displayName: Sincronização semanal - novas Features, anexos e Closed
-    branches:
-      include:
-        - main
-        - master
-    always: true
+# Sem schedules — apenas disparo manual (Run pipeline).
 
 pool:
   vmImage: "ubuntu-latest"
 
-# Evita timeout em varreduras grandes (default 60 min)
 variables:
   PYTHON_VERSION: "3.10"
   LOG_LEVEL: "INFO"
 
 jobs:
-  - job: Varredura
-    timeoutInMinutes: 120
+  - job: ReorganizarProjetosDevOps
+    timeoutInMinutes: 60
     steps:
       - checkout: self
         displayName: "Checkout do código"
@@ -61,16 +52,10 @@ jobs:
           SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
           SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
 
-      - task: Cache@2
-        displayName: "Restaurar cache da última execução (last_run)"
-        inputs:
-          key: "pipeline-lastrun-$(Build.SourceBranchName)"
-          path: backend/logs
-
       - script: |
           cd backend
-          python pipeline_feature_folders.py
-        displayName: "Executar varredura (pastas + link + anexos)"
+          python script_estruturar_projetos_devops_once.py
+        displayName: "Executar reorganização (Ano > Cliente > Feature; mesclar Qualiit; remover duplicatas 2020-2023)"
         env:
           AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
           AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
@@ -81,14 +66,4 @@ jobs:
           SHAREPOINT_SITE_URL: $(SHAREPOINT_SITE_URL)
           SHAREPOINT_FOLDER_PATH_BASE: $(SHAREPOINT_FOLDER_PATH_BASE)
           LOG_LEVEL: $(LOG_LEVEL)
-          PIPELINE_FULL_SCAN: $(PIPELINE_FULL_SCAN)
-          PIPELINE_ONLY_CLOSED: $(PIPELINE_ONLY_CLOSED)
         continueOnError: false
-
-      - task: PublishBuildArtifacts@1
-        displayName: "Publicar logs"
-        inputs:
-          pathToPublish: "backend/logs"
-          artifactName: "logs"
-          publishLocation: "Container"
-        condition: always()

@@ -145,6 +145,32 @@ class SharePointFileService:
         r = requests.delete(url, headers={"Authorization": f"Bearer {token}"}, timeout=30)
         r.raise_for_status()
 
+    def move_item(
+        self,
+        drive_id: str,
+        item_id: str,
+        new_parent_folder_id: str,
+        new_name: str | None = None,
+    ) -> dict:
+        """
+        Move um item (arquivo ou pasta) para outra pasta no mesmo drive.
+        Opcionalmente renomeia (new_name). Retorna o driveItem atualizado.
+        Usa PATCH no item (parentReference) conforme documentação Microsoft Graph.
+        """
+        token = self.auth_service.get_access_token()
+        url = f"{self.graph_base_url}/drives/{drive_id}/items/{item_id}"
+        body: dict = {"parentReference": {"id": new_parent_folder_id}}
+        if new_name:
+            body["name"] = new_name
+        r = requests.patch(
+            url,
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json=body,
+            timeout=60,
+        )
+        r.raise_for_status()
+        return r.json()
+
     def copy_folder_contents_to(
         self,
         drive_id: str,

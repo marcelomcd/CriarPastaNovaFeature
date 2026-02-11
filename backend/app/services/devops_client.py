@@ -182,13 +182,20 @@ class AzureDevOpsClient:
                 return wi
         except (ValueError, TypeError):
             pass
-        # 2) Tenta como Número da Proposta (ou extrai do nome)
+        # 2) Tenta como Número da Proposta (ou extrai do nome); DevOps pode armazenar 025288-01 ou 25288-01
         match = self._PROPOSTA_PATTERN.search(name)
         if match:
             prop = match.group(0)
-            for wi in self.find_features_by_numero_proposta(prop):
-                if self._client_matches(wi, client_name_normalized):
-                    return wi
+            pre, _, suf = prop.partition("-")
+            to_try = [prop]
+            if len(pre) == 5:
+                to_try.append("0" + prop)  # 25288-01 -> 025288-01
+            elif len(pre) == 6 and pre.startswith("0"):
+                to_try.append(pre[1:] + "-" + suf)  # 025288-01 -> 25288-01
+            for p in to_try:
+                for wi in self.find_features_by_numero_proposta(p):
+                    if self._client_matches(wi, client_name_normalized):
+                        return wi
         # 3) Busca por título contendo o nome da pasta
         for wi in self.find_features_by_title_contains(name):
             if self._client_matches(wi, client_name_normalized):

@@ -49,7 +49,8 @@ O **FluxoNovasFeatures** integra **Azure DevOps** e **SharePoint**: a cada nova 
 ### Características principais
 
 - **Tempo real**: Service Hooks do Azure DevOps disparam a API ao criar/atualizar work items (Feature).
-- **Pipeline no Azure Repos** (`azure-pipelines.yml`): varredura de Features, criação de pastas no SharePoint, link no work item e sincronização de anexos. Agendada **semanalmente** (domingos 5:00 BRT); após a varredura completa inicial, processa só novas Features, novos anexos e movimentação para Closed.
+- **Pipeline principal** (`azure-pipelines.yml`): varredura de Features, criação de pastas no SharePoint, link no work item e sincronização de anexos. Agendada **toda segunda-feira às 05:00** (horário de Brasília); após a varredura completa inicial, processa só novas Features, novos anexos e movimentação para Closed.
+- **Pipeline secundária** (`azure-pipelines-organize.yml`): reorganização estrutural da pasta Projetos DevOps (Ano > Cliente > Feature, mesclar Qualiit → Quali It, remover duplicatas em 2020-2023). **Sem agendamento** — deve ser executada **somente quando houver necessidade** de organizar a pasta principal (ver [Pipeline de organização](#pipeline-de-organizacao)).
 - **Estrutura padronizada**: `{Base}/{Ano}/{Cliente}/{FeatureId} - {NumeroProposta} - {Título}`.
 - **Segurança**: autenticação Microsoft Entra ID (MSAL) para SharePoint; PAT para Azure DevOps; validação de secret no webhook.
 
@@ -79,7 +80,12 @@ O **FluxoNovasFeatures** integra **Azure DevOps** e **SharePoint**: a cada nova 
 - **POST /webhook/devops**: recebe eventos do Service Hook (work item created/updated).
 - **GET /health**: health check da API.
 - **POST /sync/feature/{feature_id}**: sincronização manual de uma Feature.
-- Script `pipeline_feature_folders.py`: ponto de entrada da varredura (usado pela pipeline YAML).
+- Script `pipeline_feature_folders.py`: ponto de entrada da varredura (usado pela pipeline principal).
+
+### Organização estrutural (Projetos DevOps)
+
+- Script **`script_estruturar_projetos_devops_once.py`**: reorganiza a pasta **Projetos DevOps** quando há pastas fora do padrão (ex.: empresas na raiz, conteúdo em 2020-2023). Move pastas para **Ano > Cliente > Feature ID - Nº Proposta - Título**, resolve Features no Azure DevOps (ID, Nº proposta ou título), mescla **Qualiit** em **Quali It** por ano e **remove duplicatas** em 2020-2023 quando a pasta canônica já existe no ano/cliente correto. Execução **local** ou via **Pipeline de organização** (sob demanda).
+- **Consolidação** (`pipeline_consolidate_sharepoint.py`): move pastas de origens configuráveis (Documentação dos Clientes, Documentação dos Projetos, etc.) para **Projetos DevOps**; roda **apenas localmente** (não na pipeline).
 
 ---
 
@@ -238,7 +244,8 @@ Lista todas as Features (Area Path configurado), garante pasta + link + anexos p
 
 ### Pipeline no Azure DevOps
 
-- **Pipeline** (`azure-pipelines.yml`): varredura de Features, pastas no SharePoint, link e anexos. Agendamento **semanal** (domingos 5:00 BRT) e/ou disparo manual.
+- **Pipeline principal** (`azure-pipelines.yml`): varredura de Features, pastas no SharePoint, link e anexos. **Agendamento: toda segunda-feira às 05:00** (horário de Brasília), além de disparo manual.
+- **Pipeline de organização** (`azure-pipelines-organize.yml`): reorganização estrutural da pasta Projetos DevOps (igual ao script local). **Sem agendamento** — executar **somente quando houver necessidade** de organizar a pasta principal (ex.: após inclusão em massa de pastas antigas). Ver [Pipeline de organização](#pipeline-de-organizacao) abaixo.
 
 **Instruções completas** (criar pipeline, variáveis, executar): **[docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md)**. Estrutura de pastas: [docs/PIPELINES_RETRY_E_CONSOLIDAR.md](docs/PIPELINES_RETRY_E_CONSOLIDAR.md).
 
@@ -257,14 +264,17 @@ Qualiit.FluxoNovasFeatures/
 │   │   └── utils/                  # name_utils (normalização, sanitização)
 │   ├── tests/                      # Testes unitários e de integração
 │   ├── main.py                     # FastAPI: webhook, health, sync
-│   ├── pipeline_feature_folders.py # Entrada da varredura
+│   ├── pipeline_feature_folders.py # Entrada da varredura (pipeline principal)
+│   ├── script_estruturar_projetos_devops_once.py # Reorganização Projetos DevOps (pipeline organização)
+│   ├── pipeline_consolidate_sharepoint.py        # Consolidação de pastas (apenas local)
 │   ├── requirements.txt
 │   ├── .env.example
 │   └── pytest.ini
 ├── docs/
-│   ├── CONFIGURAR_PIPELINE.md      # Instruções para configurar a pipeline
+│   ├── CONFIGURAR_PIPELINE.md      # Instruções para configurar as pipelines
 │   └── PIPELINES_RETRY_E_CONSOLIDAR.md  # Estrutura de pastas e retry/erros
-├── azure-pipelines.yml             # Pipeline (varredura semanal)
+├── azure-pipelines.yml             # Pipeline principal (varredura; segunda 05:00)
+├── azure-pipelines-organize.yml    # Pipeline secundária (organização; só sob demanda)
 ├── README.md
 └── README_DE_EXEMPLO.md
 ```
@@ -319,7 +329,8 @@ python -m pytest tests/ -v
 <a id="pipeline-e-service-hooks"></a>
 ## Pipeline e Service Hooks
 
-- **Pipeline**: **Instruções passo a passo** (criar, variáveis, executar) em **[docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md)**. Agendamento semanal (domingos 5:00 BRT) e disparo manual. Estrutura de pastas e retry: [PIPELINES_RETRY_E_CONSOLIDAR.md](docs/PIPELINES_RETRY_E_CONSOLIDAR.md).
+- **Pipeline principal**: **Instruções passo a passo** (criar, variáveis, executar) em **[docs/CONFIGURAR_PIPELINE.md](docs/CONFIGURAR_PIPELINE.md)**. **Agendamento: toda segunda-feira às 05:00** (horário de Brasília); disparo manual disponível. Estrutura de pastas e retry: [PIPELINES_RETRY_E_CONSOLIDAR.md](docs/PIPELINES_RETRY_E_CONSOLIDAR.md).
+- <a id="pipeline-de-organizacao"></a>**Pipeline de organização** (secundária): usa o arquivo **`azure-pipelines-organize.yml`**. Executa o mesmo fluxo do script local `script_estruturar_projetos_devops_once.py` (reorganizar Projetos DevOps em Ano > Cliente > Feature, mesclar Qualiit → Quali It, remover duplicatas em 2020-2023). **Não possui agendamento** — deve ser rodada **apenas quando houver necessidade** de reorganizar a pasta principal (ex.: após migração ou inclusão em massa de pastas antigas). Criar em **Pipelines** → **New pipeline** → **Existing Azure Pipelines YAML file** → Path: **`/azure-pipelines-organize.yml`**; use as mesmas variáveis da pipeline principal.
 - **Service Hooks (tempo real)**: **Project Settings** → **Service hooks** → **Create subscription** — eventos **Work item created** e **Work item updated**, URL `https://<sua-api>/webhook/devops`, header `X-Webhook-Secret` = valor de `WEBHOOK_SECRET`.
 
 ---

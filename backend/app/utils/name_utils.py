@@ -109,28 +109,35 @@ NUMERO_PROPOSTA_PATTERN = re.compile(r"\d{5}-\d{2}", re.IGNORECASE)
 
 def _title_without_duplicate_proposta(title: str, numero_proposta: Optional[str]) -> str:
     """
-    Remove do título a primeira ocorrência do número da proposta, se for igual,
-    para evitar duplicar no nome da pasta (ex.: "12345 - 01234-56 - 01234-56 Algo" -> "12345 - 01234-56 - Algo").
+    Remove do título todas as ocorrências do número da proposta (e variante sem hífen),
+    para evitar duplicar no nome da pasta (ex.: "025571-02 - 025571-02 - Arteb - ..." -> "Arteb - ...").
     """
     if not title or not numero_proposta:
         return title or ""
     prop = (numero_proposta or "").strip()
     if not prop or prop == "N/A":
         return title
-    # Se o título começa com o mesmo número da proposta (ex.: "01234-56 Descrição"), remove
     tit = title.strip()
-    if tit.startswith(prop):
-        rest = tit[len(prop) :].strip().lstrip(" -:")
-        return rest or tit
-    # Remove ocorrência do padrão 5d-2d se for igual ao numero_proposta em qualquer posição
-    match = NUMERO_PROPOSTA_PATTERN.search(tit)
-    if match and match.group(0) == prop:
-        # Remove essa ocorrência e colapsa espaços
-        before = tit[: match.start()].strip().rstrip(" -")
-        after = tit[match.end() :].strip().lstrip(" -")
-        parts = [p for p in (before, after) if p]
-        return " ".join(parts) if parts else tit
-    return tit
+    # Variante sem hífen (ex.: 02557102 a partir de 025571-02)
+    prop_sem_hifen = prop.replace("-", "")
+    # Remove todas as ocorrências: proposta exata e variante sem hífen
+    for token in (prop, prop_sem_hifen):
+        if not token:
+            continue
+        while True:
+            # No início (com separadores após)
+            if tit.lower().startswith(token.lower()):
+                tit = tit[len(token) :].strip().lstrip(" -:")
+                continue
+            # No meio ou fim: substituir token por espaço e colapsar
+            low = tit.lower()
+            idx = low.find(token.lower())
+            if idx == -1:
+                break
+            tit = (tit[:idx].strip().rstrip(" -") + " " + tit[idx + len(token) :].strip().lstrip(" -")).strip()
+            tit = " ".join(tit.split())
+    # Se sobrou só número da proposta (removemos tudo), retorna vazio para usar "Sem título"
+    return tit.strip()
 
 
 def build_feature_folder_name(

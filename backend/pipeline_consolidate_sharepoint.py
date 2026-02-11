@@ -9,7 +9,7 @@ Script para consolidar documentos de várias pastas do SharePoint na pasta base 
 - Ao final, verifica se as pastas em Projetos DevOps estão no padrão canônico.
 
 Origens (uma das duas variáveis obrigatórias):
-- SHAREPOINT_SOURCE_FOLDER_PATHS — caminhos relativos à biblioteca, separados por ; (ex.: Documentação dos Clientes;Projetos DevOps OLD)
+- SHAREPOINT_SOURCE_FOLDER_PATHS — caminhos na biblioteca, separados por ; (ex.: Documentação dos Clientes;Documentação dos Projetos;Projetos DevOps OLD). Tudo é movido para Projetos DevOps, resolvendo Feature por Nº proposta/título no Azure DevOps e colocando no ano correto.
 - SHAREPOINT_SOURCE_FOLDER_URLS — URLs de compartilhamento (/:f:/s/...?e=xxx), separadas por ;
 """
 import logging
@@ -73,11 +73,16 @@ def _parse_source_folder_path(folder_rel: str) -> tuple[int | None, str | None, 
     Extrai (ano, cliente, nome_pasta) do caminho relativo da origem.
     Ex.: "2024/Cliente X/Pasta" -> (2024, "Cliente X", "Pasta")
          "2024/Closed/Cliente X/Pasta" -> (2024, "Cliente X", "Pasta")
-    Retorna (None, None, None) se não houver pelo menos 3 segmentos utilizáveis.
+         "Cliente X/Pasta" -> (None, "Cliente X", "Pasta")
+         "Pasta" -> (None, None, "Pasta")  (ex.: Documentação dos Projetos com só nome da pasta)
     """
     parts = [p for p in folder_rel.replace("\\", "/").strip("/").split("/") if p.strip()]
-    if len(parts) < 3:
+    if not parts:
         return (None, None, None)
+    if len(parts) == 1:
+        return (None, None, parts[0])
+    if len(parts) == 2:
+        return (None, parts[0], parts[1])
     year = None
     if parts[0].isdigit() and len(parts[0]) == 4:
         year = int(parts[0])
@@ -88,31 +93,38 @@ def _parse_source_folder_path(folder_rel: str) -> tuple[int | None, str | None, 
     return (year, parts[1], parts[2])
 
 
+# Pasta e cliente usados quando a Feature não é encontrada no Azure DevOps (origem sem ano)
+FALLBACK_YEAR = "2020-2023"
+FALLBACK_CLIENT_UNKNOWN = "Unknown"
+
+
 def _resolve_canonical_path(
     folder_rel: str, devops: AzureDevOpsClient | None
 ) -> str:
     """
-    Se o caminho da origem tiver ano/cliente/nome_pasta e o Azure DevOps resolver a Feature
-    (por ID, Número da Proposta ou Título), retorna o caminho canônico no padrão
-    Projetos DevOps > Ano > Cliente > Feature ID - Nº Proposta - Título.
-    Caso contrário retorna folder_rel (estrutura original).
+    Se o Azure DevOps resolver a Feature (por ID, Número da Proposta ou Título), retorna
+    o caminho canônico: Ano > Cliente > Feature ID - Nº Proposta - Título.
+    Se não resolver e a origem tiver só 1 ou 2 níveis (ex.: Documentação dos Projetos/Pasta),
+    coloca em 2020-2023/Cliente ou 2020-2023/Unknown para não criar pastas na raiz.
     """
-    if not devops:
-        return folder_rel
     year, client_raw, folder_name = _parse_source_folder_path(folder_rel)
     if not folder_name:
         return folder_rel
-    client_norm = normalize_client_name(client_raw) if client_raw else None
-    try:
-        wi = devops.resolve_feature_for_folder_name(folder_name, client_norm)
-        if not wi:
-            return folder_rel
-        info = work_item_to_feature_info(wi)
-        path = feature_info_to_folder_path(info)
-        return path.relative_path()
-    except Exception as e:
-        logger.debug("Não foi possível resolver Feature para pasta %s: %s", folder_name, e)
-        return folder_rel
+
+    if devops:
+        client_norm = normalize_client_name(client_raw) if client_raw else None
+        try:
+            wi = devops.resolve_feature_for_folder_name(folder_name, client_norm)
+            if wi:
+                info = work_item_to_feature_info(wi)
+                path = feature_info_to_folder_path(info)
+                return path.relative_path()
+        except Exception as e:
+            logger.debug("Não foi possível resolver Feature para pasta %s: %s", folder_name, e)
+
+    # Sem Azure DevOps ou Feature não encontrada: evita pasta na raiz de Projetos DevOps
+    client_placeholder = normalize_client_name(client_raw) if client_raw else FALLBACK_CLIENT_UNKNOWN
+    return f"{FALLBACK_YEAR}/{client_placeholder}/{folder_name}"
 
 
 def _copy_from_folder(
