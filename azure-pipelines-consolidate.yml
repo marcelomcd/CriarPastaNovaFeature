@@ -1,7 +1,6 @@
-# Pipeline "Consolidar SharePoint": move documentos de pastas de origem (URLs de compartilhamento)
-# para a pasta do projeto, preservando a estrutura Projetos DevOps > Ano > Cliente > Feature...
-# Sem duplicar arquivos; mesmo padrão da pipeline principal.
-# Variáveis: SHAREPOINT_* + SHAREPOINT_FOLDER_PATH_BASE=Projetos DevOps + SHAREPOINT_SOURCE_FOLDER_URLS (ver docs).
+# Pipeline "Consolidar SharePoint": move documentos das 4 pastas de origem para Projetos DevOps,
+# preservando Ano > Cliente > Feature ID - Nº - Título (Feature ID como base; sem duplicar).
+# Origens: SHAREPOINT_SOURCE_FOLDER_PATHS (caminhos na biblioteca) ou SHAREPOINT_SOURCE_FOLDER_URLS (links). Ver docs.
 
 trigger: none
 
@@ -34,8 +33,8 @@ steps:
         echo "##vso[task.logissue type=error]Variáveis SharePoint obrigatórias"
         exit 1
       fi
-      if [ -z "$(SHAREPOINT_SOURCE_FOLDER_URLS)" ]; then
-        echo "##vso[task.logissue type=error]SHAREPOINT_SOURCE_FOLDER_URLS não configurada"
+      if [ -z "$(SHAREPOINT_SOURCE_FOLDER_PATHS)" ] && [ -z "$(SHAREPOINT_SOURCE_FOLDER_URLS)" ]; then
+        echo "##vso[task.logissue type=error]Defina SHAREPOINT_SOURCE_FOLDER_PATHS ou SHAREPOINT_SOURCE_FOLDER_URLS"
         exit 1
       fi
       if [ -z "$(SHAREPOINT_FOLDER_PATH_BASE)" ]; then
@@ -47,6 +46,7 @@ steps:
       SHAREPOINT_CLIENT_ID: $(SHAREPOINT_CLIENT_ID)
       SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
       SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
+      SHAREPOINT_SOURCE_FOLDER_PATHS: $(SHAREPOINT_SOURCE_FOLDER_PATHS)
       SHAREPOINT_SOURCE_FOLDER_URLS: $(SHAREPOINT_SOURCE_FOLDER_URLS)
       SHAREPOINT_FOLDER_PATH_BASE: $(SHAREPOINT_FOLDER_PATH_BASE)
 
@@ -61,5 +61,6 @@ steps:
       SHAREPOINT_SITE_URL: $(SHAREPOINT_SITE_URL)
       SHAREPOINT_FOLDER_PATH_BASE: $(SHAREPOINT_FOLDER_PATH_BASE)
       LOG_LEVEL: $(LOG_LEVEL)
+      SHAREPOINT_SOURCE_FOLDER_PATHS: $(SHAREPOINT_SOURCE_FOLDER_PATHS)
       SHAREPOINT_SOURCE_FOLDER_URLS: $(SHAREPOINT_SOURCE_FOLDER_URLS)
     continueOnError: false

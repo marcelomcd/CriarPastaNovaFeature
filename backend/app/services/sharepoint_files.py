@@ -1,5 +1,6 @@
 """Serviço para criar pastas, links de compartilhamento e upload no SharePoint (Microsoft Graph)."""
 import logging
+import time
 from pathlib import Path
 from typing import Iterator
 from urllib.parse import quote
@@ -174,27 +175,65 @@ class SharePointFileService:
             # Subpastas não copiadas (estrutura é plana: Feature só tem arquivos)
         self.delete_item(drive_id, source_folder_id)
 
+    def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        *,
+        max_retries: int = 3,
+        backoff_seconds: float = 2.0,
+        **kwargs: object,
+    ) -> requests.Response:
+        """Executa request com retry em 502/503/504 (ex.: throttling ou indisponibilidade temporária)."""
+        last_exc: Exception | None = None
+        for attempt in range(max_retries):
+            try:
+                r = requests.request(method, url, timeout=30, **kwargs)
+                if r.status_code in (502, 503, 504) and attempt < max_retries - 1:
+                    wait = backoff_seconds * (2**attempt)
+                    logger.warning(
+                        "SharePoint %s %s status %s, tentativa %s/%s, aguardando %.1fs",
+                        method, url[:80], r.status_code, attempt + 1, max_retries, wait,
+                    )
+                    time.sleep(wait)
+                    continue
+                return r
+            except requests.RequestException as e:
+                last_exc = e
+                if attempt < max_retries - 1:
+                    wait = backoff_seconds * (2**attempt)
+                    logger.warning(
+                        "SharePoint request falhou: %s; tentativa %s/%s, aguardando %.1fs",
+                        e, attempt + 1, max_retries, wait,
+                    )
+                    time.sleep(wait)
+                else:
+                    raise
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("Unexpected retry loop exit")
+
     def _create_folder(self, drive_id: str, parent_id: str, name: str) -> str:
-        """Cria uma pasta dentro de parent_id e retorna o item id."""
+        """Cria uma pasta dentro de parent_id e retorna o item id. Retry em 502/503/504."""
         token = self.auth_service.get_access_token()
         url = f"{self.graph_base_url}/drives/{drive_id}/items/{parent_id}/children"
         body = {"name": name, "folder": {}, "@microsoft.graph.conflictBehavior": "fail"}
-        r = requests.post(
+        r = self._request_with_retry(
+            "POST",
             url,
             headers={
                 "Authorization": f"Bearer {token}",
                 "Content-Type": "application/json",
             },
             json=body,
-            timeout=30,
         )
         if r.status_code == 409:
             # Pasta já existe; listar children e achar pelo nome
             list_url = f"{self.graph_base_url}/drives/{drive_id}/items/{parent_id}/children"
-            rr = requests.get(
+            rr = self._request_with_retry(
+                "GET",
                 list_url,
                 headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-                timeout=30,
             )
             rr.raise_for_status()
             for item in rr.json().get("value", []):
@@ -238,10 +277,10 @@ class SharePointFileService:
         for part in rel_parts:
             token = self.auth_service.get_access_token()
             list_url = f"{self.graph_base_url}/drives/{drive_id}/items/{parent_id}/children"
-            r = requests.get(
+            r = self._request_with_retry(
+                "GET",
                 list_url,
                 headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-                timeout=30,
             )
             r.raise_for_status()
             found = None

@@ -2,6 +2,7 @@
 # Sincroniza: novas Features, anexos adicionados/atualizados, Features encerradas.
 # Agendamento: diário às 5:00 (horário de Brasília); varredura incremental (só o que mudou desde a última execução).
 # Variáveis: AZURE_DEVOPS_PAT, SHAREPOINT_*, AZURE_DEVOPS_ORG, AZURE_DEVOPS_PROJECT (ver docs)
+# Timeout: 120 min (evita cancelamento em muitas Features); use PIPELINE_ONLY_CLOSED=1 para processar só Encerradas.
 
 trigger: none
 
@@ -17,71 +18,76 @@ schedules:
 pool:
   vmImage: "ubuntu-latest"
 
+# Evita timeout em varreduras grandes (default 60 min)
 variables:
   PYTHON_VERSION: "3.10"
   LOG_LEVEL: "INFO"
 
-steps:
-  - checkout: self
-    displayName: "Checkout do código"
-    fetchDepth: 1
+jobs:
+  - job: Varredura
+    timeoutInMinutes: 120
+    steps:
+      - checkout: self
+        displayName: "Checkout do código"
+        fetchDepth: 1
 
-  - task: UsePythonVersion@0
-    displayName: "Configurar Python $(PYTHON_VERSION)"
-    inputs:
-      versionSpec: "$(PYTHON_VERSION)"
-      addToPath: true
+      - task: UsePythonVersion@0
+        displayName: "Configurar Python $(PYTHON_VERSION)"
+        inputs:
+          versionSpec: "$(PYTHON_VERSION)"
+          addToPath: true
 
-  - script: |
-      python -m pip install --upgrade pip
-      pip install -r backend/requirements.txt
-    displayName: "Instalar dependências Python"
-    workingDirectory: "$(Build.SourcesDirectory)"
+      - script: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+        displayName: "Instalar dependências Python"
+        workingDirectory: "$(Build.SourcesDirectory)"
 
-  - script: |
-      if [ -z "$(AZURE_DEVOPS_PAT)" ]; then
-        echo "##vso[task.logissue type=error]AZURE_DEVOPS_PAT não configurado"
-        exit 1
-      fi
-      if [ -z "$(SHAREPOINT_CLIENT_ID)" ] || [ -z "$(SHAREPOINT_CLIENT_SECRET)" ] || [ -z "$(SHAREPOINT_TENANT_ID)" ]; then
-        echo "##vso[task.logissue type=error]Variáveis SharePoint obrigatórias"
-        exit 1
-      fi
-      echo "Variáveis de ambiente validadas"
-    displayName: "Validar variáveis"
-    env:
-      AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
-      SHAREPOINT_CLIENT_ID: $(SHAREPOINT_CLIENT_ID)
-      SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
-      SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
+      - script: |
+          if [ -z "$(AZURE_DEVOPS_PAT)" ]; then
+            echo "##vso[task.logissue type=error]AZURE_DEVOPS_PAT não configurado"
+            exit 1
+          fi
+          if [ -z "$(SHAREPOINT_CLIENT_ID)" ] || [ -z "$(SHAREPOINT_CLIENT_SECRET)" ] || [ -z "$(SHAREPOINT_TENANT_ID)" ]; then
+            echo "##vso[task.logissue type=error]Variáveis SharePoint obrigatórias"
+            exit 1
+          fi
+          echo "Variáveis de ambiente validadas"
+        displayName: "Validar variáveis"
+        env:
+          AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
+          SHAREPOINT_CLIENT_ID: $(SHAREPOINT_CLIENT_ID)
+          SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
+          SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
 
-  - task: Cache@2
-    displayName: "Restaurar cache da última execução (last_run)"
-    inputs:
-      key: "pipeline-lastrun-$(Build.SourceBranchName)"
-      path: backend/logs
+      - task: Cache@2
+        displayName: "Restaurar cache da última execução (last_run)"
+        inputs:
+          key: "pipeline-lastrun-$(Build.SourceBranchName)"
+          path: backend/logs
 
-  - script: |
-      cd backend
-      python pipeline_feature_folders.py
-    displayName: "Executar varredura (pastas + link + anexos)"
-    env:
-      AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
-      AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
-      AZURE_DEVOPS_PROJECT: $(AZURE_DEVOPS_PROJECT)
-      SHAREPOINT_CLIENT_ID: $(SHAREPOINT_CLIENT_ID)
-      SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
-      SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
-      SHAREPOINT_SITE_URL: $(SHAREPOINT_SITE_URL)
-      SHAREPOINT_FOLDER_PATH_BASE: $(SHAREPOINT_FOLDER_PATH_BASE)
-      LOG_LEVEL: $(LOG_LEVEL)
-      PIPELINE_FULL_SCAN: $(PIPELINE_FULL_SCAN)
-    continueOnError: false
+      - script: |
+          cd backend
+          python pipeline_feature_folders.py
+        displayName: "Executar varredura (pastas + link + anexos)"
+        env:
+          AZURE_DEVOPS_PAT: $(AZURE_DEVOPS_PAT)
+          AZURE_DEVOPS_ORG: $(AZURE_DEVOPS_ORG)
+          AZURE_DEVOPS_PROJECT: $(AZURE_DEVOPS_PROJECT)
+          SHAREPOINT_CLIENT_ID: $(SHAREPOINT_CLIENT_ID)
+          SHAREPOINT_CLIENT_SECRET: $(SHAREPOINT_CLIENT_SECRET)
+          SHAREPOINT_TENANT_ID: $(SHAREPOINT_TENANT_ID)
+          SHAREPOINT_SITE_URL: $(SHAREPOINT_SITE_URL)
+          SHAREPOINT_FOLDER_PATH_BASE: $(SHAREPOINT_FOLDER_PATH_BASE)
+          LOG_LEVEL: $(LOG_LEVEL)
+          PIPELINE_FULL_SCAN: $(PIPELINE_FULL_SCAN)
+          PIPELINE_ONLY_CLOSED: $(PIPELINE_ONLY_CLOSED)
+        continueOnError: false
 
-  - task: PublishBuildArtifacts@1
-    displayName: "Publicar logs"
-    inputs:
-      pathToPublish: "backend/logs"
-      artifactName: "logs"
-      publishLocation: "Container"
-    condition: always()
+      - task: PublishBuildArtifacts@1
+        displayName: "Publicar logs"
+        inputs:
+          pathToPublish: "backend/logs"
+          artifactName: "logs"
+          publishLocation: "Container"
+        condition: always()

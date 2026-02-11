@@ -97,6 +97,29 @@ class Settings(BaseSettings):
             return False
         return False
 
+    # Se True, lista apenas Features com estado Encerrado (exclui novas Features); use só em runs pontuais (ex.: pós-consolidação).
+    PIPELINE_ONLY_CLOSED: bool = Field(
+        default=False,
+        description="Se True (1/true/yes), processa só Features Encerradas. Default False garante novas Features (principal) + Closed + novos anexos.",
+    )
+
+    @field_validator("PIPELINE_ONLY_CLOSED", mode="before")
+    @classmethod
+    def parse_pipeline_only_closed(cls, v: object) -> bool:
+        """Trata variável não definida ou placeholder da pipeline."""
+        if v is None:
+            return False
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, str):
+            s = v.strip().lower()
+            if not s or s.startswith("$("):
+                return False
+            if s in ("1", "true", "yes"):
+                return True
+            return False
+        return False
+
     # Se True, o passo "Executar varredura" falha (exit 1) quando alguma Feature dá erro. Se False, o passo sempre retorna 0.
     PIPELINE_FAIL_ON_FEATURE_ERROR: bool = Field(
         default=False,

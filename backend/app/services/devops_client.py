@@ -69,15 +69,21 @@ class AzureDevOpsClient:
         self,
         include_closed: bool = True,
         updated_since: datetime | None = None,
+        only_closed: bool = False,
     ) -> list[WorkItemResponse]:
         """
         Lista Features do projeto (Area Path sob Quali IT ! Gestao de Projetos).
         include_closed: se True, inclui Features encerradas (para varredura).
         updated_since: se informado, retorna apenas Features criadas ou alteradas após essa data (UTC).
-                       Útil para varredura incremental após a primeira execução.
+        only_closed: se True, retorna apenas Features com estado Encerrado (reduz volume; use com updated_since para só atualizações).
         """
         area = "Quali IT - Inovação e Tecnologia\\Quali IT ! Gestao de Projetos"
-        state_filter = "" if include_closed else " AND [System.State] <> 'Encerrado'"
+        if only_closed:
+            state_filter = " AND [System.State] = 'Encerrado'"
+        elif include_closed:
+            state_filter = ""
+        else:
+            state_filter = " AND [System.State] <> 'Encerrado'"
         date_filter = ""
         if updated_since is not None:
             # WIQL aceita data em formato ISO; System.ChangedDate é atualizado em criação e em edições (ex.: novo anexo)
@@ -139,7 +145,11 @@ class AzureDevOpsClient:
             raise
 
     def update_work_item_link_pasta(self, work_item_id: int, link_url: str) -> WorkItemResponse | None:
-        """Atualiza o campo Custom.LinkPastaDocumentacao da Feature."""
+        """
+        Atualiza o campo Custom.LinkPastaDocumentacao da Feature.
+        Em 400 (ex.: regras de campos obrigatórios como DetalhesForaEscopo/Developer1) não levanta exceção:
+        retorna None e registra log; a pasta e os anexos já foram garantidos no SharePoint.
+        """
         body = [{"op": "replace", "path": f"/fields/{LINK_PASTA_DOCUMENTACAO_FIELD}", "value": link_url}]
         proj = unquote(self.project) if "%" in self.project else self.project
         proj_enc = quote(proj, safe="", encoding="utf-8")
@@ -150,11 +160,17 @@ class AzureDevOpsClient:
             headers={"Content-Type": "application/json-patch+json"},
             timeout=30,
         )
-        if r.status_code in (400, 403):
+        if r.status_code == 400:
             logger.warning(
-                "Azure DevOps PATCH work item %s status %s: %s",
+                "Azure DevOps PATCH work item %s recusado (400). Possível campo obrigatório vazio (ex.: DetalhesForaEscopo, Developer1). Resposta: %s",
                 work_item_id,
-                r.status_code,
+                (r.text or "")[:500],
+            )
+            return None
+        if r.status_code == 403:
+            logger.warning(
+                "Azure DevOps PATCH work item %s status 403: %s",
+                work_item_id,
                 (r.text or "")[:500],
             )
         r.raise_for_status()

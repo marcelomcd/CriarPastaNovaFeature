@@ -7,7 +7,12 @@ Modo de atualização (não recria tudo):
 - Anexos: só são enviados os que ainda não estão na pasta (evita duplicar).
 - Link: atualizado no work item apenas se estiver diferente.
 
-Após a primeira execução, a varredura é incremental (só Features novas ou alteradas).
+Varredura incremental (após a primeira execução) inclui, por ordem de prioridade:
+1. Novas Features criadas (principal) — System.ChangedDate preenchido na criação.
+2. Atualizações para Features com Status Closed (encerradas).
+3. Inclusão de novos anexos (Features alteradas desde last_run).
+
+Com PIPELINE_ONLY_CLOSED=1 processa somente Features Encerradas (exclui novas Features); use só em runs pontuais.
 Para processar todas as Features de novo (preencher lacunas), use PIPELINE_FULL_SCAN=1.
 Log em HTML: backend/logs/pipeline_YYYYMMDD_HHMMSS.html (publicado como artefato).
 """
@@ -70,13 +75,25 @@ def main() -> int:
     try:
         svc = FeatureFolderService()
         use_incremental = not settings.PIPELINE_FULL_SCAN
+        only_closed = settings.PIPELINE_ONLY_CLOSED
         updated_since = _read_last_run() if use_incremental else None
         if updated_since:
-            features = svc.devops.list_features(include_closed=True, updated_since=updated_since)
-            logger.info("Varredura incremental (desde %s): %s Feature(s) encontrada(s)", updated_since.isoformat(), len(features))
+            features = svc.devops.list_features(
+                include_closed=True, updated_since=updated_since, only_closed=only_closed
+            )
+            logger.info(
+                "Varredura incremental (desde %s)%s: %s Feature(s) encontrada(s)",
+                updated_since.isoformat(),
+                " (somente Encerradas)" if only_closed else "",
+                len(features),
+            )
         else:
-            features = svc.devops.list_features(include_closed=True)
-            logger.info("Varredura completa: %s Feature(s) encontrada(s)", len(features))
+            features = svc.devops.list_features(include_closed=True, only_closed=only_closed)
+            logger.info(
+                "Varredura completa%s: %s Feature(s) encontrada(s)",
+                " (somente Encerradas)" if only_closed else "",
+                len(features),
+            )
         ok = 0
         err = 0
         failed_ids: list[int] = []

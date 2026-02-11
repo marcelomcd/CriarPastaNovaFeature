@@ -116,8 +116,11 @@ class FeatureFolderService:
         if not skip_work_item_update:
             current_link = (wi.fields.get("Custom.LinkPastaDocumentacao") or "").strip()
             if current_link != web_url:
-                self.devops.update_work_item_link_pasta(work_item_id, web_url)
-                logger.info("Atualizado Custom.LinkPastaDocumentacao para Feature %s", work_item_id)
+                updated = self.devops.update_work_item_link_pasta(work_item_id, web_url)
+                if updated is not None:
+                    logger.info("Atualizado Custom.LinkPastaDocumentacao para Feature %s", work_item_id)
+                else:
+                    logger.info("Feature %s: pasta e anexos ok; link não gravado no work item (validação Azure DevOps)", work_item_id)
         else:
             logger.info("Feature %s: pasta e anexos garantidos (atualização do work item omitida)", work_item_id)
 
